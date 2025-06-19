@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use base64::{engine::general_purpose, Engine as _};
 use chrono::Utc;
+use clap::{Parser, Subcommand};
 use colored::*;
 use csv::Reader;
 use hmac::{Hmac, Mac};
@@ -15,10 +16,37 @@ use std::process::exit;
 
 type HmacSha1 = Hmac<Sha1>;
 
+/// A command-line tool for file operations and management in Huawei Cloud OBS
+#[derive(Parser)]
+#[command(version, about, long_about = None)]
+struct Args {
+    #[command(subcommand)]
+    command: Commands,
+
+    /// Optional access key override. Use only if env var and credentials CSV are unavailable.
+    #[arg(short, long)]
+    ak: Option<String>,
+
+    /// Optional secret key override. Use only if env var and credentials CSV are unavailable.
+    #[arg(short, long)]
+    sk: Option<String>,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Create a bucket
+    Create {
+        #[arg(short, long)]
+        bucket: String,
+    },
+}
+
 struct Credentials {
     ak: String,
     sk: String,
 }
+
+// Argument parsing
 
 fn get_credentials() -> Result<Credentials> {
     info!("Reading AK/SK values from envvars");
@@ -75,6 +103,8 @@ fn log_error_chain(err: anyhow::Error) {
 }
 
 fn main() {
+    let args = Args::parse();
+
     colog::init(); // Initialize logging backend
 
     let region = "la-south-2";
