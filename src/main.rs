@@ -4,13 +4,14 @@ use chrono::Utc;
 use colored::*;
 use csv::Reader;
 use hmac::{Hmac, Mac};
-use log::warn;
+use log::{error, info, warn};
 use reqwest::blocking::Client;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use sha1::Sha1; // OBS requires HMAC-SHA1 lol
 use std::env;
 use std::error::Error;
 use std::fs::File;
+use std::process::exit;
 
 type HmacSha1 = Hmac<Sha1>;
 
@@ -20,6 +21,8 @@ struct Credentials {
 }
 
 fn get_credentials() -> Result<Credentials> {
+    info!("Reading AK/SK values from envvars");
+
     // Could fail
     let ak = env::var("HUAWEICLOUD_SDK_AK");
     let sk = env::var("HUAWEICLOUD_SDK_SK");
@@ -61,11 +64,18 @@ fn read_credentials_csv() -> Result<Credentials> {
     }
 }
 
+fn log_anyhow_error_chain(err: anyhow::Error) {
+    error!("Error: {}", err);
+    for cause in err.chain().skip(1) {
+        error!("Caused by: {}", cause);
+    }
+}
+
 fn main() {
     env_logger::init();
 
     let region = "la-south-2";
-    let bucket_name = "testando2";
+    let bucket_name = "testando3";
     let url = format!("http://{bucket_name}.obs.{region}.myhuaweicloud.com");
     let body = format!(
         "<CreateBucketConfiguration xmlns=\"http://obs.{region}.myhuaweicloud.com/doc/2015-06-30/\"><Location>{region}</Location></CreateBucketConfiguration>"
@@ -74,7 +84,16 @@ fn main() {
     let content_type = "application/xml";
     let canonical_string = format!("PUT\n\n{content_type}\n{date_str}\n/{bucket_name}/");
 
-    let mut mac = HmacSha1::new_from_slice(sk.as_bytes()).unwrap();
+    // Get AK/SK Credentials
+    let credentials = match get_credentials() {
+        Ok(creds) => creds,
+        Err(e) => {
+            log_anyhow_error_chain(e);
+            exit(1);
+        }
+    };
+
+    let mut mac = HmacSha1::new_from_slice(credentials.sk.as_bytes()).unwrap();
     mac.update(canonical_string.as_bytes());
     let signature = general_purpose::STANDARD.encode(mac.finalize().into_bytes());
 
@@ -83,7 +102,7 @@ fn main() {
     headers.insert("Content-Type", HeaderValue::from_static("application/xml"));
     headers.insert(
         "Authorization",
-        HeaderValue::from_str(&format!("OBS {ak}:{signature}")).unwrap(),
+        HeaderValue::from_str(&format!("OBS {}:{}", credentials.ak, signature)).unwrap(),
     );
 
     let client = Client::new();
