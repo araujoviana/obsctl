@@ -23,7 +23,7 @@ struct Credentials {
 fn get_credentials() -> Result<Credentials> {
     info!("Reading AK/SK values from envvars");
 
-    // Could fail
+    // may fail if env vars are unset
     let ak = env::var("HUAWEICLOUD_SDK_AK");
     let sk = env::var("HUAWEICLOUD_SDK_SK");
 
@@ -33,49 +33,52 @@ fn get_credentials() -> Result<Credentials> {
             sk: sk_val,
         }),
         _ => {
-            warn!("HUAWEICLOUD_SDK_AK or HUAWEICLOUD_SDK_SK not found, checking 'credentials.csv' file");
-            read_credentials_csv()
-                .context("Couldn't extract AK/SK values from credentials.csv file")
+            // fallback to CSV parsing if either env var is missing
+            warn!("HUAWEICLOUD_SDK_AK or HUAWEICLOUD_SDK_SK not found, checking if 'credentials.csv' file is present in current directory");
+            read_credentials_csv().with_context(|| {
+                format!(
+                    "\nMissing credentials.\nSet the environment variables {} and {} or provide a {} file in the current working directory where {} is executed.\n",
+                    "HUAWEICLOUD_SDK_AK".yellow().bold(),
+                    "HUAWEICLOUD_SDK_SK".yellow().bold(),
+                    "credentials.csv".yellow().bold(),
+                    "obsctl".magenta().bold()
+                )
+            })
         }
     }
 }
 
 fn read_credentials_csv() -> Result<Credentials> {
-    // credentials.csv file follows a identical format, so we simplify
-    // file parsing by reading the exact positions of the credentials
+    // credentials.csv is assumed to have a fixed structure,
+    // so we read the second and third columns from the first data row directly
 
     let cred_file = File::open("credentials.csv").context("Cannot find credentials.csv")?;
     let mut rdr = csv::Reader::from_reader(cred_file);
 
     if let Some(result) = rdr.records().next() {
         let record = result.context("Can't find second line in csv")?;
-        let ak = record.get(1).context("Missing AK in CSV")?.to_string();
-        let sk = record.get(2).context("Missing SK in CSV")?.to_string();
+        let ak = record.get(1).context("Missing AK in CSV")?.to_string(); // second column (index 1)
+        let sk = record.get(2).context("Missing SK in CSV")?.to_string(); // third column (index 2)
         Ok(Credentials { ak, sk })
     } else {
-        anyhow::bail!(format!(
-        "\n{} Missing credentials.\nSet the environment variables {} and {} or provide a {} file in the current working directory where {} is executed.\n",
-        "ERROR:".red().bold(),
-        "HUAWEICLOUD_SDK_AK".yellow().bold(),
-        "HUAWEICLOUD_SDK_SK".yellow().bold(),
-        "credentials.csv".yellow().bold(),
-        "obsctl".magenta().bold()
-    ));
+        // file is empty or has only headers, no usable data
+        anyhow::bail!("credentials.csv is present but contains no usable records");
     }
 }
 
-fn log_anyhow_error_chain(err: anyhow::Error) {
-    error!("Error: {}", err);
+fn log_error_chain(err: anyhow::Error) {
+    let mut msg = format!("{} {}", "ERROR:".red().bold(), err);
     for cause in err.chain().skip(1) {
-        error!("Caused by: {}", cause);
+        msg.push_str(&format!("\nCaused by: {}", cause));
     }
+    error!("{}", msg);
 }
 
 fn main() {
-    env_logger::init();
+    colog::init(); // Initialize logging backend
 
     let region = "la-south-2";
-    let bucket_name = "testando3";
+    let bucket_name = "testando4";
     let url = format!("http://{bucket_name}.obs.{region}.myhuaweicloud.com");
     let body = format!(
         "<CreateBucketConfiguration xmlns=\"http://obs.{region}.myhuaweicloud.com/doc/2015-06-30/\"><Location>{region}</Location></CreateBucketConfiguration>"
@@ -88,7 +91,7 @@ fn main() {
     let credentials = match get_credentials() {
         Ok(creds) => creds,
         Err(e) => {
-            log_anyhow_error_chain(e);
+            log_error_chain(e);
             exit(1);
         }
     };
