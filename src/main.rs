@@ -9,6 +9,11 @@ use std::env;
 
 type HmacSha1 = Hmac<Sha1>;
 
+struct Credentials {
+    ak: String,
+    sk: String,
+}
+
 fn main() {
     let ak = env::var("HUAWEICLOUD_SDK_AK").expect("Oops");
     let sk = env::var("HUAWEICLOUD_SDK_SK").expect("Oops");
