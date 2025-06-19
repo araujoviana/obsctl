@@ -1,16 +1,14 @@
 use anyhow::{Context, Result};
 use base64::{engine::general_purpose, Engine as _};
 use chrono::Utc;
-use clap::{Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
 use colored::*;
-use csv::Reader;
 use hmac::{Hmac, Mac};
-use log::{error, info, warn};
+use log::{debug, error, info, warn};
 use reqwest::blocking::Client;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use sha1::Sha1; // OBS requires HMAC-SHA1 lol
 use std::env;
-use std::error::Error;
 use std::fs::File;
 use std::process::exit;
 
@@ -19,9 +17,13 @@ type HmacSha1 = Hmac<Sha1>;
 /// A command-line tool for file operations and management in Huawei Cloud OBS
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
-struct Args {
+struct CliArgs {
     #[command(subcommand)]
     command: Commands,
+
+    /// OBS region (e.g. la-south-2). Required for all operations.
+    #[arg(short, long)]
+    region: String,
 
     /// Optional access key override. Use only if env var and credentials CSV are unavailable.
     #[arg(short, long)]
@@ -35,10 +37,13 @@ struct Args {
 #[derive(Subcommand)]
 enum Commands {
     /// Create a bucket
-    Create {
-        #[arg(short, long)]
-        bucket: String,
-    },
+    Create(CreateArgs),
+}
+
+#[derive(Args)]
+struct CreateArgs {
+    #[arg(short, long)]
+    bucket: String,
 }
 
 struct Credentials {
@@ -102,17 +107,38 @@ fn log_error_chain(err: anyhow::Error) {
     error!("{}", msg);
 }
 
-fn main() {
-    let args = Args::parse();
-
-    colog::init(); // Initialize logging backend
-
-    let region = "la-south-2";
-    let bucket_name = "testando4";
-    let url = format!("http://{bucket_name}.obs.{region}.myhuaweicloud.com");
+fn generate_request(bucket: &str, region: &str) -> Result<()> {
+    let url = format!("http://{bucket}.obs.{region}.myhuaweicloud.com");
     let body = format!(
         "<CreateBucketConfiguration xmlns=\"http://obs.{region}.myhuaweicloud.com/doc/2015-06-30/\"><Location>{region}</Location></CreateBucketConfiguration>"
     );
+}
+
+// REVIEW return value
+fn create_bucket(create_args: CreateArgs) -> Result<()> {
+    todo!()
+}
+
+fn main() {
+    let args = CliArgs::parse();
+
+    colog::init(); // Initialize logging backend
+
+    debug!("CLI Parsed succesfully");
+
+    match args.command {
+        Commands::Create(create_args) => {
+            debug!("Matched with create");
+
+            match create_bucket(create_args) {
+                Err(e) => {
+                    log_error_chain(e);
+                }
+                _ => (),
+            }
+        }
+    }
+
     let date_str = Utc::now().format("%a, %d %b %Y %H:%M:%S GMT").to_string();
     let content_type = "application/xml";
     let canonical_string = format!("PUT\n\n{content_type}\n{date_str}\n/{bucket_name}/");
