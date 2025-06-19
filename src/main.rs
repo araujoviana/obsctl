@@ -5,14 +5,22 @@ use clap::{Args, Parser, Subcommand};
 use colored::*;
 use hmac::{Hmac, Mac};
 use log::{debug, error, info, warn};
-use reqwest::blocking::Client;
-use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
+use reqwest::header::{HeaderMap, HeaderValue};
+use reqwest::{Response, Client};
 use sha1::Sha1; // OBS requires HMAC-SHA1 lol
 use std::env;
 use std::fs::File;
 use std::process::exit;
 
 type HmacSha1 = Hmac<Sha1>;
+
+const CONTENT_TYPE: &str = "application/xml";
+
+macro_rules! obs_url {
+    ($bucket_name:expr, $region:expr) => {
+        format!("http://{}.obs.{}.myhuaweicloud.com", $bucket_name, $region)
+    };
+}
 
 /// A command-line tool for file operations and management in Huawei Cloud OBS
 #[derive(Parser)]
@@ -107,41 +115,86 @@ fn log_error_chain(err: anyhow::Error) {
     error!("{}", msg);
 }
 
-fn generate_request(bucket: &str, region: &str) -> Result<()> {
-    let url = format!("http://{bucket}.obs.{region}.myhuaweicloud.com");
+async fn log_api_response(res: Response) -> Result<()> {
+    let status = res.status();
+    let body = res.text().await.context("Failed to read response body")?;
+    let msg = format!("{} {}\n{}", "Result:".bright_green().bold(), status, body);
+    info!("{}", msg);
+    Ok(())
+}
+
+fn generate_signature(credentials: &Credentials, canonical_string: String) -> String {
+    let mut mac = HmacSha1::new_from_slice(credentials.sk.as_bytes()).unwrap();
+    mac.update(canonical_string.as_bytes());
+
+    general_purpose::STANDARD.encode(mac.finalize().into_bytes())
+}
+
+
+async fn generate_request(
+    bucket: String,
+    region: String,
+    body: String,
+    credentials: Credentials,
+) -> Result<Response> {
+    let date_str = Utc::now().format("%a, %d %b %Y %H:%M:%S GMT").to_string();
+
+    let canonical_string = format!("PUT\n\n{}\n{}\n/{}/", CONTENT_TYPE, date_str, bucket);
+    let signature = generate_signature(&credentials, canonical_string);
+
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "Date",
+        HeaderValue::from_str(&date_str).context("Failed to insert date into headers")?,
+    );
+    headers.insert("Content-Type", HeaderValue::from_static(CONTENT_TYPE));
+    headers.insert(
+        "Authorization",
+        HeaderValue::from_str(&format!("OBS {}:{}", credentials.ak, signature))
+            .context("Failed to insert Authorization header")?,
+    );
+
+    let url = obs_url!(bucket, region);
+    let client = Client::new();
+
+    let res = client
+        .put(&url)
+        .headers(headers)
+        .body(body)
+        .send()
+        .await
+        .context("Failed to send PUT request to OBS endpoint")?;
+
+    Ok(res)
+}
+
+async fn create_bucket(
+    bucket_name: String,
+    region: String,
+    credentials: Credentials,
+) -> Result<Response> {
     let body = format!(
         "<CreateBucketConfiguration xmlns=\"http://obs.{region}.myhuaweicloud.com/doc/2015-06-30/\"><Location>{region}</Location></CreateBucketConfiguration>"
     );
+
+    generate_request(bucket_name, region, body, credentials).await
 }
 
-// REVIEW return value
-fn create_bucket(create_args: CreateArgs) -> Result<()> {
-    todo!()
+async fn handle_create(bucket: String, region: String, credentials: Credentials) -> Result<()> {
+    let res = create_bucket(bucket, region, credentials).await?;
+    log_api_response(res).await?;
+    Ok(())
 }
 
-fn main() {
+
+#[tokio::main]
+async fn main() {
+    colog::init(); // Initialize logging backend
+    debug!("Starting execution");
+
     let args = CliArgs::parse();
 
-    colog::init(); // Initialize logging backend
-
-    debug!("CLI Parsed succesfully");
-
-    match args.command {
-        Commands::Create(create_args) => {
-            debug!("Matched with create");
-
-            match create_bucket(create_args) {
-                Err(e) => {
-                    log_error_chain(e);
-                }
-                _ => (),
-            }
-        }
-    }
-
-    let date_str = Utc::now().format("%a, %d %b %Y %H:%M:%S GMT").to_string();
-    let content_type = "application/xml";
-    let canonical_string = format!("PUT\n\n{content_type}\n{date_str}\n/{bucket_name}/");
+    debug!("CLI parsed succesfully");
 
     // Get AK/SK Credentials
     let credentials = match get_credentials() {
@@ -152,21 +205,12 @@ fn main() {
         }
     };
 
-    let mut mac = HmacSha1::new_from_slice(credentials.sk.as_bytes()).unwrap();
-    mac.update(canonical_string.as_bytes());
-    let signature = general_purpose::STANDARD.encode(mac.finalize().into_bytes());
-
-    let mut headers = HeaderMap::new();
-    headers.insert("Date", HeaderValue::from_str(&date_str).unwrap());
-    headers.insert("Content-Type", HeaderValue::from_static("application/xml"));
-    headers.insert(
-        "Authorization",
-        HeaderValue::from_str(&format!("OBS {}:{}", credentials.ak, signature)).unwrap(),
-    );
-
-    let client = Client::new();
-    let res = client.put(&url).headers(headers).body(body).send().unwrap();
-
-    println!("{}", res.status());
-    println!("{}", res.text().unwrap());
+    match args.command {
+        Commands::Create(create_args) => {
+            debug!("Matched with create");
+            if let Err(e) = handle_create(create_args.bucket, args.region, credentials).await {
+                log_error_chain(e);
+            }
+        }
+    }
 }
