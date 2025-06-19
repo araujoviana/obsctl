@@ -1,0 +1,13 @@
+[package]
+name = "obsctl"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.98"
+base64 = "0.22.1"
+chrono = { version = "0.4.41", features = ["alloc"] }
+hmac = "0.12.1"
+reqwest = { version = "0.12.20", features = ["blocking", "json"] }
+sha1 = "0.10.6"
+tokio = { version = "1.45.1", features = ["full"] }
