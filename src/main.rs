@@ -86,11 +86,15 @@ fn log_error_chain(err: anyhow::Error) {
 async fn log_api_response(res: Response) -> Result<()> {
     let status = res.status();
     let body = res.text().await.context("Failed to read response body")?;
-    let msg = format!("{} {}\n{}", "Result:".bright_green().bold(), status, body);
+    let display_body = if body.trim().is_empty() {
+        "No text in response body".bright_blue().to_string()
+    } else {
+        body
+    };
+    let msg = format!("{} {}\n{}", "Result:".bright_green().bold(), status, display_body);
     if status.is_success() {
         info!("{}", msg);
     } else {
-        // Log successful but non-2xx responses as warnings or errors
         warn!("{}", msg);
     }
     Ok(())
