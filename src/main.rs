@@ -16,10 +16,10 @@ use std::process::exit;
 // HMAC-SHA1 type alias for OBS authentication, legacy :O
 type HmacSha1 = Hmac<Sha1>;
 
-#[derive(Clone)] // Clone is needed to pass it to the async function
+#[derive(Clone)]
 enum ContentType {
     ApplicationXml,
-    // TextPlain, // Unused, can be removed or kept for future use
+    // TextPlain, // Unused, kept for future use
     // ApplicationJson, // Unused
 }
 
@@ -100,7 +100,7 @@ async fn log_api_response(res: Response) -> Result<()> {
 fn get_credentials(cli_ak: Option<String>, cli_sk: Option<String>) -> Result<Credentials> {
     // 1. Prioritize credentials from command-line arguments
     if let (Some(ak), Some(sk)) = (cli_ak, cli_sk) {
-        info!("Reading AK/SK values from command-line arguments");
+        info!("Reading AK/SK values from command-line arguments, consider using env vars instead");
         return Ok(Credentials { ak, sk });
     }
 
@@ -154,7 +154,7 @@ async fn generate_request(
     client: &Client, // Use a shared client
     method: Method,
     url: &str,
-    credentials: &Credentials, // Pass by reference
+    credentials: &Credentials,
     body: String,
     content_type_header: Option<ContentType>,
     canonical_resource: &str,
@@ -228,7 +228,7 @@ async fn list_buckets(client: &Client, region: &str, credentials: &Credentials) 
     // The ListBuckets operation uses the regional service endpoint, not a bucket-specific one.
     let url = format!("http://obs.{}.myhuaweicloud.com", region);
     let body = "".to_string(); // GET requests have an empty body.
-    let canonical_resource = "/"; // The canonical resource for listing buckets is just "/".
+    let canonical_resource = "/";
 
     let response = generate_request(
         client,
@@ -251,7 +251,7 @@ async fn main() -> Result<()> {
     let args = CliArgs::parse();
     debug!("CLI parsed successfully");
 
-    // Get AK/SK Credentials, handling priority correctly
+    // Get AK/SK credentials
     let credentials = match get_credentials(args.ak, args.sk) {
         Ok(creds) => creds,
         Err(e) => {
@@ -260,7 +260,7 @@ async fn main() -> Result<()> {
         }
     };
 
-    // Create a single, reusable reqwest client
+    // Create a single reqwest client
     let client = Client::new();
 
     // The result of the command will determine the exit code
