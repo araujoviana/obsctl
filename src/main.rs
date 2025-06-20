@@ -78,7 +78,7 @@ fn get_credentials() -> Result<Credentials> {
             warn!("HUAWEICLOUD_SDK_AK or HUAWEICLOUD_SDK_SK not found, checking if 'credentials.csv' file is present in current directory");
             read_credentials_csv().with_context(|| {
                 format!(
-                    "\nMissing credentials.\nSet the environment variables {} and {} or provide a {} file in the current working directory where {} is executed.\n",
+                    "\nMissing credentials.\nSet the environment variables {} and {}\nor provide a {} file in the current working directory where {} is executed.\n",
                     "HUAWEICLOUD_SDK_AK".yellow().bold(),
                     "HUAWEICLOUD_SDK_SK".yellow().bold(),
                     "credentials.csv".yellow().bold(),
@@ -90,6 +90,7 @@ fn get_credentials() -> Result<Credentials> {
 }
 
 fn read_credentials_csv() -> Result<Credentials> {
+    info!("Reading AK/SK values from 'credentials.csv'");
     // credentials.csv is assumed to have a fixed structure,
     // so we read the second and third columns from the first data row directly
 
