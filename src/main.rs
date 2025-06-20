@@ -1,26 +1,31 @@
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail, anyhow};
 use base64::{engine::general_purpose, Engine as _};
 use chrono::Utc;
 use clap::{Args, Parser, Subcommand};
+use csv::Reader;
 use colored::*;
 use hmac::{Hmac, Mac};
 use log::{debug, error, info, warn};
 use reqwest::header::{HeaderMap, HeaderValue};
 use reqwest::{Response, Client};
-use sha1::Sha1; // OBS requires HMAC-SHA1 lol
+use sha1::Sha1;
 use std::env;
 use std::fs::File;
 use std::process::exit;
 
+// HMAC-SHA1 type alias for OBS authentication, legacy :O
 type HmacSha1 = Hmac<Sha1>;
 
 const CONTENT_TYPE: &str = "application/xml";
 
+// Generates the base OBS URL given a bucket name and region using string interpolation.
 macro_rules! obs_url {
     ($bucket_name:expr, $region:expr) => {
         format!("http://{}.obs.{}.myhuaweicloud.com", $bucket_name, $region)
     };
 }
+
+// Argument parsing
 
 /// A command-line tool for file operations and management in Huawei Cloud OBS
 #[derive(Parser)]
@@ -50,6 +55,7 @@ enum Commands {
 
 #[derive(Args)]
 struct CreateArgs {
+    /// Bucket name
     #[arg(short, long)]
     bucket: String,
 }
@@ -59,8 +65,23 @@ struct Credentials {
     sk: String,
 }
 
-// Argument parsing
+fn log_error_chain(err: anyhow::Error) {
+    let mut msg = format!("{} {}", "ERROR:".red().bold(), err);
+    for cause in err.chain().skip(1) {
+        msg.push_str(&format!("\nCaused by: {}", cause));
+    }
+    error!("{}", msg);
+}
 
+async fn log_api_response(res: Response) -> Result<()> {
+    let status = res.status();
+    let body = res.text().await.context("Failed to read response body")?;
+    let msg = format!("{} {}\n{}", "Result:".bright_green().bold(), status, body);
+    info!("{}", msg);
+    Ok(())
+}
+
+/// Attempts to load AK/SK credentials from environment variables.
 fn get_credentials() -> Result<Credentials> {
     info!("Reading AK/SK values from envvars");
 
@@ -89,49 +110,37 @@ fn get_credentials() -> Result<Credentials> {
     }
 }
 
+/// Reads AK/SK credentials from 'credentials.csv' assuming fixed CSV structure.
+/// Extracts second and third columns from the first data row after the header.
 fn read_credentials_csv() -> Result<Credentials> {
     info!("Reading AK/SK values from 'credentials.csv'");
-    // credentials.csv is assumed to have a fixed structure,
-    // so we read the second and third columns from the first data row directly
 
     let cred_file = File::open("credentials.csv").context("Cannot find credentials.csv")?;
-    let mut rdr = csv::Reader::from_reader(cred_file);
+    let mut rdr = Reader::from_reader(cred_file);
 
     if let Some(result) = rdr.records().next() {
         let record = result.context("Can't find second line in csv")?;
-        let ak = record.get(1).context("Missing AK in CSV")?.to_string(); // second column (index 1)
-        let sk = record.get(2).context("Missing SK in CSV")?.to_string(); // third column (index 2)
+        let ak = record.get(1).ok_or_else(|| anyhow!("Missing AK in CSV"))?.to_string(); // second column (index 1)
+        let sk = record.get(2).ok_or_else(|| anyhow!("Missing SK in CSV"))?.to_string(); // third column (index 2)
         Ok(Credentials { ak, sk })
     } else {
         // file is empty or has only headers, no usable data
-        anyhow::bail!("credentials.csv is present but contains no usable records");
+        bail!("credentials.csv is present but contains no usable records");
     }
 }
 
-fn log_error_chain(err: anyhow::Error) {
-    let mut msg = format!("{} {}", "ERROR:".red().bold(), err);
-    for cause in err.chain().skip(1) {
-        msg.push_str(&format!("\nCaused by: {}", cause));
-    }
-    error!("{}", msg);
-}
-
-async fn log_api_response(res: Response) -> Result<()> {
-    let status = res.status();
-    let body = res.text().await.context("Failed to read response body")?;
-    let msg = format!("{} {}\n{}", "Result:".bright_green().bold(), status, body);
-    info!("{}", msg);
-    Ok(())
-}
-
-fn generate_signature(credentials: &Credentials, canonical_string: String) -> String {
-    let mut mac = HmacSha1::new_from_slice(credentials.sk.as_bytes()).unwrap();
+/// Compute HMAC-SHA1 signature of the canonical string using the secret key (SK)
+/// Return the Base64‑encoded result
+fn generate_signature(credentials: &Credentials, canonical_string: String) -> Result<String> {
+    // Initialize HMAC-SHA1 with SK bytes
+    let mut mac = HmacSha1::new_from_slice(credentials.sk.as_bytes()).context("Failed to initialize HMAC-SHA1 with SK bytes")?;
+    // Feed canonical string bytes into HMAC
     mac.update(canonical_string.as_bytes());
-
-    general_purpose::STANDARD.encode(mac.finalize().into_bytes())
+    // Finalize HMAC, extract raw bytes, encode with Base64 standard
+    Ok(general_purpose::STANDARD.encode(mac.finalize().into_bytes()))
 }
 
-
+/// Builds and sends authenticated request to OBS with headers and body, returns response or error.
 async fn generate_request(
     bucket: String,
     region: String,
@@ -141,7 +150,7 @@ async fn generate_request(
     let date_str = Utc::now().format("%a, %d %b %Y %H:%M:%S GMT").to_string();
 
     let canonical_string = format!("PUT\n\n{}\n{}\n/{}/", CONTENT_TYPE, date_str, bucket);
-    let signature = generate_signature(&credentials, canonical_string);
+    let signature = generate_signature(&credentials, canonical_string).context("Failed to generate request signature")?;
 
     let mut headers = HeaderMap::new();
     headers.insert(
@@ -181,15 +190,10 @@ async fn create_bucket(
     generate_request(bucket_name, region, body, credentials).await
 }
 
-async fn handle_create(bucket: String, region: String, credentials: Credentials) -> Result<()> {
-    let res = create_bucket(bucket, region, credentials).await?;
-    log_api_response(res).await?;
-    Ok(())
-}
 
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<()> {
     colog::init(); // Initialize logging backend
     debug!("Starting execution");
 
@@ -209,8 +213,9 @@ async fn main() {
     match args.command {
         Commands::Create(create_args) => {
             debug!("Matched with create");
-            if let Err(e) = handle_create(create_args.bucket, args.region, credentials).await {
-                log_error_chain(e);
+            match create_bucket(create_args.bucket, args.region, credentials).await {
+                Ok(res) => log_api_response(res).await,
+                Err(e) => Ok( log_error_chain(e) ),
             }
         }
     }
