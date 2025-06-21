@@ -1,14 +1,16 @@
 use crate::obs::Credentials;
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use colored::*;
 use csv::Reader;
-use log::{info, warn};
+use log::{debug, info, warn};
 use std::env;
 use std::fs::File;
 
 /// Attempts to load AK/SK credentials, prioritizing CLI args, then env vars, then CSV file.
 pub fn get_credentials(cli_ak: Option<String>, cli_sk: Option<String>) -> Result<Credentials> {
-    // 1. Prioritize credentials from command-line arguments
+    debug!("Getting AK/SK credentials");
+
+    // 1. Prioritize credentials from command-line arguments (which are not recommended)
     if let (Some(ak), Some(sk)) = (cli_ak, cli_sk) {
         info!("Reading AK/SK values from command-line arguments, consider using env vars instead");
         return Ok(Credentials { ak, sk });
@@ -41,6 +43,7 @@ pub fn get_credentials(cli_ak: Option<String>, cli_sk: Option<String>) -> Result
 fn read_credentials_csv() -> Result<Credentials> {
     info!("Reading AK/SK values from 'credentials.csv'");
     let cred_file = File::open("credentials.csv").context("Cannot find credentials.csv")?;
+    // Initialize CSV reader
     let mut rdr = Reader::from_reader(cred_file);
 
     if let Some(result) = rdr.records().next() {

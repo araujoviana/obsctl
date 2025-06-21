@@ -7,7 +7,7 @@ pub struct CliArgs {
     #[command(subcommand)]
     pub command: Commands,
 
-    /// OBS region (e.g. la-south-2). Required for all operations.
+    /// OBS region (e.g., la-south-2). Required for all operations, even region-independent ones.
     #[arg(short, long)]
     pub region: String,
 
@@ -24,8 +24,14 @@ pub struct CliArgs {
 pub enum Commands {
     /// Create a bucket
     Create(CreateArgs),
-    /// List buckets
+    /// List all created buckets
     ListBuckets,
+    /// List objects in a bucket
+    ListObjects(ListObjectsArgs),
+    /// Delete a bucket
+    DeleteBucket(DeleteBucketArgs),
+    /// Delete multiple buckets (experimental)
+    DeleteBuckets(DeleteBucketsArgs),
 }
 
 #[derive(Args)]
@@ -33,4 +39,31 @@ pub struct CreateArgs {
     /// Bucket name
     #[arg(short, long)]
     pub bucket: String,
+}
+
+#[derive(Args)]
+pub struct ListObjectsArgs {
+    /// Bucket name
+    #[arg(short, long)]
+    pub bucket: String,
+    /// Include only elements with the specified prefix
+    #[arg(short, long)]
+    pub prefix: Option<String>,
+    /// List results after the object with the marker
+    #[arg(short, long)]
+    pub marker: Option<String>,
+}
+
+#[derive(Args)]
+pub struct DeleteBucketArgs {
+    /// Bucket name
+    #[arg(short, long)]
+    pub bucket: String,
+}
+
+#[derive(Args)]
+pub struct DeleteBucketsArgs {
+    /// Bucket name
+    #[arg(short, long)]
+    pub buckets: Vec<String>,
 }
