@@ -22,16 +22,30 @@ pub struct CliArgs {
 
 #[derive(Subcommand)]
 pub enum Commands {
+    // Multiple aliases are good but they pollute the menus too much
     /// Create a bucket
+    #[command(visible_alias = "mkb")]
     Create(CreateArgs),
-    /// List all created buckets
+
+    /// List buckets in all regions
+    #[command(visible_alias = "lsb")]
     ListBuckets,
+
     /// List objects in a bucket
+    #[command(visible_alias = "lso")]
     ListObjects(ListObjectsArgs),
-    /// Delete a bucket
+
+    /// Delete a single bucket
+    #[command(visible_alias = "rmb")]
     DeleteBucket(DeleteBucketArgs),
-    /// Delete multiple buckets (experimental)
+
+    /// Delete multiple buckets
+    #[command(visible_alias = "rmbs")]
     DeleteBuckets(DeleteBucketsArgs),
+
+    /// Upload an object to a bucket
+    #[command(visible_alias = "put")]
+    UploadObject(UploadObjectArgs),
 }
 
 #[derive(Args)]
@@ -63,7 +77,20 @@ pub struct DeleteBucketArgs {
 
 #[derive(Args)]
 pub struct DeleteBucketsArgs {
+    /// List of (space separated) bucket names to delete
+    #[arg(short, long, num_args = 1..)]
+    pub buckets: Vec<String>,
+}
+
+#[derive(Args)]
+pub struct UploadObjectArgs {
     /// Bucket name
     #[arg(short, long)]
-    pub buckets: Vec<String>,
+    pub bucket: String,
+    /// File path
+    #[arg(short, long)]
+    pub file_path: String,
+    /// Optional object path
+    #[arg(short, long)]
+    pub object_path: Option<String>,
 }

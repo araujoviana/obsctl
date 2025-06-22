@@ -6,7 +6,7 @@ mod obs; // Contains OBS API interaction logic.
 use anyhow::Result;
 use clap::Parser;
 use log::debug;
-use obs::{delete_bucket, delete_multiple_buckets, list_objects};
+use obs::{delete_bucket, delete_multiple_buckets, list_objects, upload_object};
 use reqwest::Client;
 use std::process::exit;
 
@@ -61,20 +61,20 @@ async fn main() -> Result<()> {
         }
         Commands::DeleteBucket(sub_args) => {
             debug!("Executing 'delete-bucket' command");
-            delete_bucket(
-                &client,
-                &sub_args.bucket,
-                &args.region,
-                &credentials,
-            )
-            .await
+            delete_bucket(&client, &sub_args.bucket, &args.region, &credentials).await
         }
         Commands::DeleteBuckets(sub_args) => {
             debug!("Executing 'delete-buckets' command");
-            delete_multiple_buckets(
+            delete_multiple_buckets(&client, sub_args.buckets, &args.region, &credentials).await
+        }
+        Commands::UploadObject(sub_args) => {
+            debug!("Executing 'upload-object' command");
+            upload_object(
                 &client,
-                sub_args.buckets,
+                &sub_args.bucket,
                 &args.region,
+                &sub_args.file_path,
+                &sub_args.object_path,
                 &credentials,
             )
             .await
