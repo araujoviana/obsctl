@@ -1,1 +1,33 @@
-/target
+# Compiled files
+/target/
+**/*.rs.bk
+
+# Build artifacts
+debug/
+release/
+
+# Dependencies
+Cargo.lock
+Cargo.toml.orig
+
+# IDE/editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Test output
+/coverage/
+*/.pytest_cache/
+*/.cargo-cache/
+
+# Misc
+*.tmp
+*.bak
