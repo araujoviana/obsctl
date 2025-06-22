@@ -1,5 +1,7 @@
 use clap::{Args, Parser, Subcommand};
 
+// TODO Delete objects from buckets
+
 /// A command-line tool for file operations and management in Huawei Cloud OBS
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
