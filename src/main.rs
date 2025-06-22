@@ -6,7 +6,10 @@ mod obs; // Contains OBS API interaction logic.
 use anyhow::Result;
 use clap::Parser;
 use log::debug;
-use obs::{delete_bucket, delete_multiple_buckets, list_objects, upload_multiple_objects, upload_object};
+use obs::{
+    delete_bucket, delete_multiple_buckets, download_object, list_objects, upload_multiple_objects,
+    upload_object,
+};
 use reqwest::Client;
 use std::process::exit;
 
@@ -86,6 +89,18 @@ async fn main() -> Result<()> {
                 &sub_args.bucket,
                 &args.region,
                 sub_args.files,
+                &credentials,
+            )
+            .await
+        }
+        Commands::DownloadObject(sub_args) => {
+            debug!("Executing 'download-object' command");
+            download_object(
+                &client,
+                &sub_args.bucket,
+                &args.region,
+                &sub_args.object_path,
+                &sub_args.output_dir,
                 &credentials,
             )
             .await

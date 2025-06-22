@@ -39,13 +39,17 @@ pub enum Commands {
     #[command(visible_alias = "rmb")]
     DeleteBucket(DeleteBucketArgs),
 
-    /// Delete multiple buckets
-    #[command(visible_alias = "rmbs")]
-    DeleteBuckets(DeleteBucketsArgs),
-
     /// Upload an object to a bucket
     #[command(visible_alias = "put")]
     UploadObject(UploadObjectArgs),
+
+    /// Download objects contents to disk
+    #[command(visible_alias = "get")]
+    DownloadObject(DownloadObjectArgs),
+
+    /// (experimental) Delete multiple buckets
+    #[command(visible_alias = "rmbs")]
+    DeleteBuckets(DeleteBucketsArgs),
 
     /// (experimental) Upload multiple objects to a bucket
     #[command(visible_alias = "puts")]
@@ -107,4 +111,17 @@ pub struct UploadObjectsArgs {
     /// One or more local file paths to upload. The object key will be the filename.
     #[arg(short, long, num_args(1..))]
     pub files: Vec<String>,
+}
+
+#[derive(Args)]
+pub struct DownloadObjectArgs {
+    /// The bucket to download from
+    #[arg(short, long)]
+    pub bucket: String,
+    /// Object path in bucket, don't include the initial "/"
+    #[arg(short, long)]
+    pub object_path: String,
+    /// Output directory, NOT the filename
+    #[arg(short = 'd', long)]
+    pub output_dir: Option<String>,
 }

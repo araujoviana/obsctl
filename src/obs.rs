@@ -12,7 +12,7 @@ use reqwest::header::{HeaderMap, HeaderValue};
 use reqwest::{Client, Method, Response};
 use sha1::Sha1;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 // HMAC-SHA1 type alias for OBS signing, Ouch.
@@ -256,6 +256,84 @@ pub async fn upload_object(
     log_api_response(response).await
 }
 
+/// Download an object from a bucket
+pub async fn download_object(
+    client: &Client,
+    bucket_name: &str,
+    region: &str,
+    object_path: &str,
+    output_dir: &Option<String>,
+    credentials: &Credentials,
+) -> Result<()> {
+    let url = format!(
+        "http://{}.obs.{}.myhuaweicloud.com/{}",
+        bucket_name, region, object_path
+    );
+    let body = Body::Text("".to_string());
+    let canonical_resource = format!("/{}/{}", bucket_name, object_path);
+
+    let response = generate_request(
+        client,
+        Method::GET,
+        &url,
+        credentials,
+        body,
+        None,
+        "",
+        &canonical_resource,
+    )
+    .await?;
+
+    if !response.status().is_success() {
+        log_api_response(response).await?;
+        return Err(anyhow!(
+            "Failed to download object: Server returned non-success status."
+        ));
+    }
+
+    // Read entire response body into a buffer
+    let content = response
+        .bytes()
+        .await
+        .context("Failed to read response body bytes")?;
+
+    // Extracts object file name
+    let filename = Path::new(object_path).file_name().ok_or_else(|| {
+        anyhow!(
+            "Could not determine filename from object path: {}",
+            object_path.yellow()
+        )
+    })?;
+
+    let output_directory = output_dir.as_deref().unwrap_or(".");
+    let mut local_path = PathBuf::from(output_directory);
+
+    // Create directories for output path
+    fs::create_dir_all(&local_path).with_context(|| {
+        format!(
+            "Failed to write downloaded content to {}",
+            local_path.display()
+        )
+    })?;
+    local_path.push(filename);
+
+    // Write object's contents to disk
+    fs::write(&local_path, &content).with_context(|| {
+        format!(
+            "Failed to write downloaded content to {}",
+            local_path.display()
+        )
+    })?;
+
+    log::info!(
+        "Successfully downloaded '{}' to '{}'",
+        object_path.cyan(),
+        local_path.display().to_string().green()
+    );
+
+    Ok(())
+}
+
 /// Upload multiple object to a bucket
 pub async fn upload_multiple_objects(
     client: &Client,
@@ -292,12 +370,10 @@ pub async fn upload_multiple_objects(
         })
         .collect::<Vec<_>>();
 
-
     // Wait until all API calls are made
     join_all(upload_futures).await;
 
     Ok(())
-
 }
 
 /// Computes the HMAC-SHA1 signature for a canonical string.
