@@ -46,18 +46,22 @@ pub enum Commands {
     /// Upload an object to a bucket
     #[command(visible_alias = "put")]
     UploadObject(UploadObjectArgs),
+
+    /// (experimental) Upload multiple objects to a bucket
+    #[command(visible_alias = "puts")]
+    UploadObjects(UploadObjectsArgs),
 }
 
 #[derive(Args)]
 pub struct CreateArgs {
-    /// Bucket name
+    /// The bucket to upload to
     #[arg(short, long)]
     pub bucket: String,
 }
 
 #[derive(Args)]
 pub struct ListObjectsArgs {
-    /// Bucket name
+    /// The bucket to upload to
     #[arg(short, long)]
     pub bucket: String,
     /// Include only elements with the specified prefix
@@ -70,7 +74,7 @@ pub struct ListObjectsArgs {
 
 #[derive(Args)]
 pub struct DeleteBucketArgs {
-    /// Bucket name
+    /// The bucket to upload to
     #[arg(short, long)]
     pub bucket: String,
 }
@@ -84,7 +88,7 @@ pub struct DeleteBucketsArgs {
 
 #[derive(Args)]
 pub struct UploadObjectArgs {
-    /// Bucket name
+    /// The bucket to upload to
     #[arg(short, long)]
     pub bucket: String,
     /// File path
@@ -93,4 +97,14 @@ pub struct UploadObjectArgs {
     /// Optional object path
     #[arg(short, long)]
     pub object_path: Option<String>,
+}
+
+#[derive(Args)]
+pub struct UploadObjectsArgs {
+    /// The bucket to upload to
+    #[arg(short, long)]
+    pub bucket: String,
+    /// One or more local file paths to upload. The object key will be the filename.
+    #[arg(short, long, num_args(1..))]
+    pub files: Vec<String>,
 }

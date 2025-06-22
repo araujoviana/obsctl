@@ -256,6 +256,50 @@ pub async fn upload_object(
     log_api_response(response).await
 }
 
+/// Upload multiple object to a bucket
+pub async fn upload_multiple_objects(
+    client: &Client,
+    bucket_name: &str,
+    region: &str,
+    file_paths: Vec<String>,
+    credentials: &Credentials,
+) -> Result<()> {
+    // Follows same logic as other parallel functions
+    let upload_futures = file_paths
+        .into_iter()
+        .map(|file_path| {
+            let client = client.clone();
+            let bucket_name = bucket_name.to_string();
+            let region = region.to_string();
+            let credentials = credentials.clone();
+
+            tokio::spawn(async move {
+                if let Err(e) = upload_object(
+                    &client,
+                    &bucket_name,
+                    &region,
+                    &file_path,
+                    &None,
+                    &credentials,
+                )
+                .await
+                {
+                    error!("Failed to upload file '{}': {}", file_path.red(), e);
+                } else {
+                    log::info!("Successfully uploaded '{}'", file_path.green());
+                }
+            })
+        })
+        .collect::<Vec<_>>();
+
+
+    // Wait until all API calls are made
+    join_all(upload_futures).await;
+
+    Ok(())
+
+}
+
 /// Computes the HMAC-SHA1 signature for a canonical string.
 fn generate_signature(credentials: &Credentials, canonical_string: &str) -> Result<String> {
     // Initialize HMAC with secret key (sk).
