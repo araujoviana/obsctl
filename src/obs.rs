@@ -265,6 +265,9 @@ pub async fn download_object(
     output_dir: &Option<String>,
     credentials: &Credentials,
 ) -> Result<()> {
+    // Remove first '/' if present
+    let object_path = if object_path.starts_with('/') {&object_path[1..]} else {object_path};
+
     let url = format!(
         "http://{}.obs.{}.myhuaweicloud.com/{}",
         bucket_name, region, object_path
@@ -376,6 +379,40 @@ pub async fn upload_multiple_objects(
     Ok(())
 }
 
+
+
+/// Delete an object from a bucket
+pub async fn delete_object(
+    client: &Client,
+    bucket_name: &str,
+    region: &str,
+    object_path: &str,
+    credentials: &Credentials,
+) -> Result<()> {
+
+    let url = format!(
+        "http://{}.obs.{}.myhuaweicloud.com/{}",
+        bucket_name, region, object_path
+    );
+    let body = Body::Text("".to_string());
+    let canonical_resource = format!("/{}/{}", bucket_name, object_path);
+
+    let response = generate_request(
+        client,
+        Method::DELETE,
+        &url,
+        credentials,
+        body,
+        None,
+        "",
+        &canonical_resource,
+    )
+    .await?;
+
+    log_api_response(response).await
+}
+
+
 /// Computes the HMAC-SHA1 signature for a canonical string.
 fn generate_signature(credentials: &Credentials, canonical_string: &str) -> Result<String> {
     // Initialize HMAC with secret key (sk).
@@ -405,7 +442,7 @@ async fn generate_request(
     spinner.enable_steady_tick(Duration::from_millis(120));
     // Style from https://github.com/console-rs/indicatif/blob/main/examples/long-spinner.rs
     spinner.set_style(
-        ProgressStyle::with_template("{spinner:.blue} {msg}")
+        ProgressStyle::with_template("{spinner:.red} {msg}")
             .unwrap()
             .tick_strings(&[
                 "▹▹▹▹▹",

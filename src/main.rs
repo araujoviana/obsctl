@@ -7,8 +7,7 @@ use anyhow::Result;
 use clap::Parser;
 use log::debug;
 use obs::{
-    delete_bucket, delete_multiple_buckets, download_object, list_objects, upload_multiple_objects,
-    upload_object,
+    delete_bucket, delete_multiple_buckets, delete_object, download_object, list_objects, upload_multiple_objects, upload_object
 };
 use reqwest::Client;
 use std::process::exit;
@@ -101,6 +100,17 @@ async fn main() -> Result<()> {
                 &args.region,
                 &sub_args.object_path,
                 &sub_args.output_dir,
+                &credentials,
+            )
+            .await
+        }
+        Commands::DeleteObject(sub_args) => {
+            debug!("Executing 'download-object' command");
+            delete_object(
+                &client,
+                &sub_args.bucket,
+                &args.region,
+                &sub_args.object_path,
                 &credentials,
             )
             .await

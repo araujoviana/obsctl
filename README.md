@@ -29,7 +29,7 @@ cd obsctl
 cargo install --path .
 ```
 
-## Setup
+## Quick Setup
 
 ### Authentication
 

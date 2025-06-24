@@ -33,13 +33,13 @@ pub enum Commands {
     #[command(visible_alias = "lsb")]
     ListBuckets,
 
-    /// List objects in a bucket
-    #[command(visible_alias = "lso")]
-    ListObjects(ListObjectsArgs),
-
     /// Delete a single bucket
     #[command(visible_alias = "rmb")]
     DeleteBucket(DeleteBucketArgs),
+
+    /// List objects in a bucket
+    #[command(visible_alias = "ls")]
+    ListObjects(ListObjectsArgs),
 
     /// Upload an object to a bucket
     #[command(visible_alias = "put")]
@@ -49,6 +49,11 @@ pub enum Commands {
     #[command(visible_alias = "get")]
     DownloadObject(DownloadObjectArgs),
 
+    /// Download objects contents to disk
+    #[command(visible_alias = "rm")]
+    DeleteObject(DeleteObjectArgs),
+
+    // TODO unify plural commands with normal commands
     /// (experimental) Delete multiple buckets
     #[command(visible_alias = "rmbs")]
     DeleteBuckets(DeleteBucketsArgs),
@@ -120,10 +125,20 @@ pub struct DownloadObjectArgs {
     /// The bucket to download from
     #[arg(short, long)]
     pub bucket: String,
-    /// Object path in bucket, don't include the initial "/"
+    /// Object path in bucket
     #[arg(short, long)]
     pub object_path: String,
     /// Output directory, NOT the filename
     #[arg(short = 'd', long)]
     pub output_dir: Option<String>,
+}
+
+#[derive(Args)]
+pub struct DeleteObjectArgs {
+    /// The bucket where the object is
+    #[arg(short, long)]
+    pub bucket: String,
+    /// Object path in bucket
+    #[arg(short, long)]
+    pub object_path: String,
 }
