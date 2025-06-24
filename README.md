@@ -9,7 +9,7 @@ Its focus is on making common operations as fast and simple as possible. It is n
 ## Features
 
 -   **Bucket Management**: Create, list, and delete buckets.
--   **Object Management**: Upload, download, and list objects.
+-   **Object Management**: Upload, download, delete, and list objects.
 -   **Parallel Operations**: Upload or delete multiple objects/buckets concurrently.
 -   **Flexible Authentication**: Load credentials from command-line flags, environment variables, or a `credentials.csv` file.
 
@@ -19,7 +19,12 @@ Its focus is on making common operations as fast and simple as possible. It is n
 
 Ensure you have the Rust toolchain installed. If not, get it from [rustup.rs](https://rustup.rs/).
 
-> I will upload it to crates.io soon, sorry 🙃
+### From Crates.io (Coming Soon)
+
+This tool will be available on `crates.io` soon. Once published, you will be able to install it with:
+```bash
+cargo install obsctl
+```
 
 ### From Source
 
@@ -47,7 +52,7 @@ cargo install --path .
     ```
 
 3.  **`credentials.csv` file**:
-    You can get this file from your cloud console, *OR* you can create a file named `credentials.csv` in the directory where you run the command. The format should be:
+    You can get this file from your cloud console or create it yourself. `obsctl` expects the Access Key in the second column and the Secret Key in the third. For example:
     ```csv
     User Name,Access Key Id,Secret Access Key
     your-user,YOUR_ACCESS_KEY,YOUR_SECRET_KEY
@@ -81,41 +86,40 @@ obsctl -r us-east-3 put -b my-new-bucket -f ./image.png -o "archive/2025/image.p
 
 **Upload all `.jpg` files in the current directory in parallel:**
 ```bash
-# Your shell (untested on Windows) expands *.jpg into a list of files
+# Note: Your shell expands *.jpg into a list of files. This behavior may
+# differ on Windows (cmd.exe).
 obsctl -r us-east-3 puts -b my-new-bucket -f *.jpg
 ```
 
 **List objects in a bucket:**
 ```bash
-obsctl -r us-east-3 lso -b my-new-bucket
+obsctl -r us-east-3 ls -b my-new-bucket
 ```
 
-**Download an object:**
-```bash
+**Download an object:**```bash
 obsctl -r us-east-3 get -b my-new-bucket -o "archive/2025/image.png" -d ~/Downloads
 ```
 
-## Commands (for now)
+**Delete an object:**
+```bash
+obsctl -r us-east-3 rm -b my-new-bucket -o "archive/2025/image.png"
+```
 
-> `delete-object` will be added soon
+## Commands
 
 | Command | Alias | Description                               |
 | :------ | :---- | :---------------------------------------- |
 | `create`  | `mkb` | Create a new bucket.                      |
 | `list-buckets`|`lsb` | List all buckets.                         |
-| `list-objects`|`lso` | List objects within a bucket.             |
 | `delete-bucket`|`rmb`| Delete a single bucket.                   |
+| `list-objects`|`ls` | List objects within a bucket.             |
 | `upload-object`|`put`| Upload a local file to a bucket.        |
 | `download-object`|`get`| Download an object to disk.               |
+| `delete-object`|`rm`| Delete an object from a bucket.           |
 | `delete-buckets`|`rmbs`| (Experimental) Delete multiple buckets.   |
 | `upload-objects`|`puts`| (Experimental) Upload multiple objects.   |
 
-## Disclaimer, again
-
-This project is an independent tool developed by the community. It is not officially affiliated with, maintained, authorized, or endorsed by Huawei Technologies Co., Ltd. or any of its affiliates. All Huawei Cloud product names, logos, and brands are property of their respective owners.
-
-This software is provided "as-is" and without warranty. Use at your own risk.
 
 ## License
 
-[MIT license](http://opensource.org/licenses/MIT)
+This project is licensed under the [MIT license](http://opensource.org/licenses/MIT).
