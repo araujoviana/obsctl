@@ -1,24 +1,41 @@
 use clap::{Args, Parser, Subcommand};
 
-// TODO Delete objects from buckets
+const APP_HELP_TEMPLATE: &str = r"
+         __              __  __
+  ____  / /_  __________/ /_/ /
+ / __ \/ __ \/ ___/ ___/ __/ /
+/ /_/ / /_/ (__  ) /__/ /_/ /
+\____/_.___/____/\___/\__/_/
+
+{name} {version}
+{author-with-newline}
+{about-with-newline}
+{usage-heading} {usage}
+
+COMMANDS:
+{subcommands}
+
+OPTIONS:
+{options}
+";
 
 /// A command-line tool for file operations and management in Huawei Cloud OBS
 #[derive(Parser)]
-#[command(version, about, long_about = None)]
+#[command(version, about, long_about = None, help_template = APP_HELP_TEMPLATE, )]
 pub struct CliArgs {
     #[command(subcommand)]
     pub command: Commands,
 
     /// OBS region (e.g., la-south-2). Required for all operations, even region-independent ones.
-    #[arg(short, long)]
-    pub region: String,
+    #[arg(short, long, global = true)]
+    pub region: Option<String>,
 
     /// Optional access key override. Use only if env var and credentials CSV are unavailable.
-    #[arg(short, long)]
+    #[arg(short, long, global = true)]
     pub ak: Option<String>,
 
     /// Optional secret key override. Use only if env var and credentials CSV are unavailable.
-    #[arg(short, long)]
+    #[arg(short, long, global = true)]
     pub sk: Option<String>,
 }
 

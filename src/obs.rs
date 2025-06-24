@@ -266,7 +266,11 @@ pub async fn download_object(
     credentials: &Credentials,
 ) -> Result<()> {
     // Remove first '/' if present
-    let object_path = if object_path.starts_with('/') {&object_path[1..]} else {object_path};
+    let object_path = if object_path.starts_with('/') {
+        &object_path[1..]
+    } else {
+        object_path
+    };
 
     let url = format!(
         "http://{}.obs.{}.myhuaweicloud.com/{}",
@@ -379,8 +383,6 @@ pub async fn upload_multiple_objects(
     Ok(())
 }
 
-
-
 /// Delete an object from a bucket
 pub async fn delete_object(
     client: &Client,
@@ -389,7 +391,6 @@ pub async fn delete_object(
     object_path: &str,
     credentials: &Credentials,
 ) -> Result<()> {
-
     let url = format!(
         "http://{}.obs.{}.myhuaweicloud.com/{}",
         bucket_name, region, object_path
@@ -411,7 +412,6 @@ pub async fn delete_object(
 
     log_api_response(response).await
 }
-
 
 /// Computes the HMAC-SHA1 signature for a canonical string.
 fn generate_signature(credentials: &Credentials, canonical_string: &str) -> Result<String> {

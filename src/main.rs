@@ -3,11 +3,13 @@ mod cli; // Defines the command-line interface structure.
 mod error; // Provides error handling and logging utilities.
 mod obs; // Contains OBS API interaction logic.
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::Parser;
+use colored::Colorize;
 use log::debug;
 use obs::{
-    delete_bucket, delete_multiple_buckets, delete_object, download_object, list_objects, upload_multiple_objects, upload_object
+    delete_bucket, delete_multiple_buckets, delete_object, download_object, list_objects,
+    upload_multiple_objects, upload_object,
 };
 use reqwest::Client;
 use std::process::exit;
@@ -27,6 +29,13 @@ async fn main() -> Result<()> {
     let args = CliArgs::parse();
     debug!("CLI parsed successfully");
 
+    // HACK region is required but annoying to type first
+
+    let region = args
+        .region
+        .as_ref()
+        .with_context(|| format!("{}", "Missing required argument --region".bold()))?;
+
     // Load AK/SK keys
     let credentials = match get_credentials(args.ak, args.sk) {
         Ok(creds) => creds,
@@ -43,11 +52,11 @@ async fn main() -> Result<()> {
     let command_result = match args.command {
         Commands::Create(sub_args) => {
             debug!("Executing 'create' command");
-            create_bucket(&client, &sub_args.bucket, &args.region, &credentials).await
+            create_bucket(&client, &sub_args.bucket, region, &credentials).await
         }
         Commands::ListBuckets => {
             debug!("Executing 'list-buckets' command");
-            list_buckets(&client, &args.region, &credentials).await
+            list_buckets(&client, region, &credentials).await
         }
         Commands::ListObjects(sub_args) => {
             debug!("Executing 'list-buckets' command");
@@ -56,25 +65,25 @@ async fn main() -> Result<()> {
                 &sub_args.bucket,
                 &sub_args.prefix,
                 &sub_args.marker,
-                &args.region,
+                region,
                 &credentials,
             )
             .await
         }
         Commands::DeleteBucket(sub_args) => {
             debug!("Executing 'delete-bucket' command");
-            delete_bucket(&client, &sub_args.bucket, &args.region, &credentials).await
+            delete_bucket(&client, &sub_args.bucket, region, &credentials).await
         }
         Commands::DeleteBuckets(sub_args) => {
             debug!("Executing 'delete-buckets' command");
-            delete_multiple_buckets(&client, sub_args.buckets, &args.region, &credentials).await
+            delete_multiple_buckets(&client, sub_args.buckets, region, &credentials).await
         }
         Commands::UploadObject(sub_args) => {
             debug!("Executing 'upload-object' command");
             upload_object(
                 &client,
                 &sub_args.bucket,
-                &args.region,
+                region,
                 &sub_args.file_path,
                 &sub_args.object_path,
                 &credentials,
@@ -86,7 +95,7 @@ async fn main() -> Result<()> {
             upload_multiple_objects(
                 &client,
                 &sub_args.bucket,
-                &args.region,
+                region,
                 sub_args.files,
                 &credentials,
             )
@@ -97,7 +106,7 @@ async fn main() -> Result<()> {
             download_object(
                 &client,
                 &sub_args.bucket,
-                &args.region,
+                region,
                 &sub_args.object_path,
                 &sub_args.output_dir,
                 &credentials,
@@ -109,7 +118,7 @@ async fn main() -> Result<()> {
             delete_object(
                 &client,
                 &sub_args.bucket,
-                &args.region,
+                region,
                 &sub_args.object_path,
                 &credentials,
             )
