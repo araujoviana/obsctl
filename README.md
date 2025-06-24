@@ -10,8 +10,9 @@ Its focus is on making common operations as fast and simple as possible. It is n
 
 -   **Bucket Management**: Create, list, and delete buckets.
 -   **Object Management**: Upload, download, delete, and list objects.
--   **Parallel Operations**: Upload or delete multiple objects/buckets concurrently.
+-   **(some) Parallel Operations**: Upload or delete multiple objects/buckets concurrently.
 -   **Flexible Authentication**: Load credentials from command-line flags, environment variables, or a `credentials.csv` file.
+-   **Note on API Output (Work in Progress)**: The tool currently prints the raw XML response from the OBS API. While functional, this output can be verbose and difficult to read. Future versions will include automatic parsing and pretty-printing to display this information in a clear, human-readable format.
 
 ## Installation
 

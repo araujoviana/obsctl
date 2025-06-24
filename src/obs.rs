@@ -15,6 +15,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+// TODO IMPORTANT! PARSE XML AND MAKE IT READABLE!!
+// TODO IMPORTANT! UNIFY PLURAL COMMANDS WITH SINGULAR COMMANDS!!
+
 // HMAC-SHA1 type alias for OBS signing, Ouch.
 type HmacSha1 = Hmac<Sha1>;
 
