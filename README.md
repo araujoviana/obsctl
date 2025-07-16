@@ -30,7 +30,7 @@ cargo install obsctl
 ### From Source
 
 ```bash
-git clone https://github.com/your-username/obsctl.git
+git clone https://github.com/araujoviana/obsctl.git
 cd obsctl
 cargo install --path .
 ```
