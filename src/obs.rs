@@ -69,7 +69,7 @@ macro_rules! query_params {
 pub async fn create_bucket(
     client: &Client,
     bucket_name: &str,
-    region: &str,
+    region: String,
     credentials: &Credentials,
 ) -> Result<()> {
     let url = format!("http://{}.obs.{}.myhuaweicloud.com", bucket_name, region);
@@ -93,7 +93,11 @@ pub async fn create_bucket(
 }
 
 /// Sends a request to list all OBS buckets.
-pub async fn list_buckets(client: &Client, region: &str, credentials: &Credentials) -> Result<()> {
+pub async fn list_buckets(
+    client: &Client,
+    region: String,
+    credentials: &Credentials,
+) -> Result<()> {
     let url = format!("http://obs.{}.myhuaweicloud.com", region);
     let body = Body::Text("".to_string());
     let canonical_resource = "/";
@@ -118,7 +122,7 @@ pub async fn list_objects(
     bucket_name: &str,
     prefix: &Option<String>,
     marker: &Option<String>,
-    region: &str,
+    region: String,
     credentials: &Credentials,
 ) -> Result<()> {
     let url = format!(
@@ -151,7 +155,7 @@ pub async fn list_objects(
 pub async fn delete_bucket(
     client: &Client,
     bucket_name: &str,
-    region: &str,
+    region: String,
     credentials: &Credentials,
 ) -> Result<()> {
     let url = format!("http://{}.obs.{}.myhuaweicloud.com/", bucket_name, region);
@@ -177,7 +181,7 @@ pub async fn delete_bucket(
 pub async fn delete_multiple_buckets(
     client: &Client,
     buckets: Vec<String>,
-    region: &str,
+    region: String,
     credentials: &Credentials,
 ) -> Result<()> {
     let delete_futures = buckets
@@ -188,7 +192,7 @@ pub async fn delete_multiple_buckets(
             let region = region.to_string();
             tokio::spawn(async move {
                 // Errors shouldn't stop other concurrent deletion tasks
-                if let Err(e) = delete_bucket(&client, &bucket_name, &region, &credentials).await {
+                if let Err(e) = delete_bucket(&client, &bucket_name, region, &credentials).await {
                     error!(
                         "{} '{}': {}",
                         "Failed to delete bucket:".red().bold(),
@@ -210,7 +214,7 @@ pub async fn delete_multiple_buckets(
 pub async fn upload_object(
     client: &Client,
     bucket_name: &str,
-    region: &str,
+    region: String,
     file_path: &str,
     object_path: &Option<String>,
     credentials: &Credentials,
@@ -263,7 +267,7 @@ pub async fn upload_object(
 pub async fn download_object(
     client: &Client,
     bucket_name: &str,
-    region: &str,
+    region: String,
     object_path: &str,
     output_dir: &Option<String>,
     credentials: &Credentials,
@@ -348,7 +352,7 @@ pub async fn download_object(
 pub async fn upload_multiple_objects(
     client: &Client,
     bucket_name: &str,
-    region: &str,
+    region: String,
     file_paths: Vec<String>,
     credentials: &Credentials,
 ) -> Result<()> {
@@ -365,7 +369,7 @@ pub async fn upload_multiple_objects(
                 if let Err(e) = upload_object(
                     &client,
                     &bucket_name,
-                    &region,
+                    region,
                     &file_path,
                     &None,
                     &credentials,
@@ -390,7 +394,7 @@ pub async fn upload_multiple_objects(
 pub async fn delete_object(
     client: &Client,
     bucket_name: &str,
-    region: &str,
+    region: String,
     object_path: &str,
     credentials: &Credentials,
 ) -> Result<()> {

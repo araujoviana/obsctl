@@ -3,9 +3,8 @@ mod cli; // Defines the command-line interface structure.
 mod error; // Provides error handling and logging utilities.
 mod obs; // Contains OBS API interaction logic.
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use clap::Parser;
-use colored::Colorize;
 use log::debug;
 use obs::{
     delete_bucket, delete_multiple_buckets, delete_object, download_object, list_objects,
@@ -29,12 +28,8 @@ async fn main() -> Result<()> {
     let args = CliArgs::parse();
     debug!("CLI parsed successfully");
 
-    // HACK region is required but annoying to type first
-
-    let region = args
-        .region
-        .as_ref()
-        .with_context(|| format!("{}", "Missing required argument --region".bold()))?;
+    // Region is obligatory despite not being needed for some calls
+    let region = args.region;
 
     // Load AK/SK keys
     let credentials = match get_credentials(args.ak, args.sk) {
