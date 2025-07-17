@@ -27,7 +27,7 @@ pub struct CliArgs {
     pub command: Commands,
 
     /// OBS region (e.g., la-south-2). Required for all operations, even region-independent ones.
-    #[arg(short, long, global = true)]
+    #[arg(short, long)]
     pub region: String,
 
     /// Optional access key override. Use only if env var and credentials CSV are unavailable.
