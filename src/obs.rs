@@ -1,4 +1,7 @@
 use crate::error::log_api_response;
+use crate::error::log_api_response_legacy;
+use crate::generate_xml_table_vector;
+use crate::xml::BucketList;
 use anyhow::{Context, Result, anyhow};
 use base64::{Engine as _, engine::general_purpose};
 use chrono::Utc;
@@ -89,7 +92,7 @@ pub async fn create_bucket(
         &canonical_resource,
     )
     .await?;
-    log_api_response(response).await
+    log_api_response_legacy(response).await
 }
 
 /// Sends a request to list all OBS buckets.
@@ -113,7 +116,23 @@ pub async fn list_buckets(
         canonical_resource,
     )
     .await?;
-    log_api_response(response).await
+
+    let status = response.status(); // extract before consuming
+    let raw_xml = response
+        .text()
+        .await
+        .context("Failed to read response body")?;
+
+    let parsed = generate_xml_table_vector!(
+        BucketList => "Bucket" in &raw_xml, {
+            Name => name,
+            CreationDate => creation_date,
+            Location => location,
+            BucketType => bucket_type
+        }
+    );
+
+    log_api_response(status, parsed, raw_xml).await
 }
 
 /// Sends a request to list all objects in a bucket.
@@ -148,7 +167,7 @@ pub async fn list_objects(
         &canonical_resource,
     )
     .await?;
-    log_api_response(response).await
+    log_api_response_legacy(response).await
 }
 
 /// Deletes a single bucket from OBS
@@ -174,7 +193,7 @@ pub async fn delete_bucket(
         &canonical_resource,
     )
     .await?;
-    log_api_response(response).await
+    log_api_response_legacy(response).await
 }
 
 /// Deletes multiple buckets asynchronously from OBS
@@ -260,7 +279,7 @@ pub async fn upload_object(
     )
     .await?;
 
-    log_api_response(response).await
+    log_api_response_legacy(response).await
 }
 
 /// Download an object from a bucket
@@ -299,7 +318,7 @@ pub async fn download_object(
     .await?;
 
     if !response.status().is_success() {
-        log_api_response(response).await?;
+        log_api_response_legacy(response).await?;
         return Err(anyhow!(
             "Failed to download object: Server returned non-success status."
         ));
@@ -417,7 +436,7 @@ pub async fn delete_object(
     )
     .await?;
 
-    log_api_response(response).await
+    log_api_response_legacy(response).await
 }
 
 /// Computes the HMAC-SHA1 signature for a canonical string.
