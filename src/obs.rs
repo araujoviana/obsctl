@@ -2,6 +2,7 @@ use crate::error::log_api_response;
 use crate::error::log_api_response_legacy;
 use crate::generate_xml_table_vector;
 use crate::xml::BucketList;
+use crate::xml::ObjectList;
 use anyhow::{Context, Result, anyhow};
 use base64::{Engine as _, engine::general_purpose};
 use chrono::Utc;
@@ -135,6 +136,7 @@ pub async fn list_buckets(
     log_api_response(status, parsed, raw_xml).await
 }
 
+// TODO add object filtering
 /// Sends a request to list all objects in a bucket.
 pub async fn list_objects(
     client: &Client,
@@ -167,7 +169,23 @@ pub async fn list_objects(
         &canonical_resource,
     )
     .await?;
-    log_api_response_legacy(response).await
+
+    let status = response.status(); // extract before consuming
+    let raw_xml = response
+        .text()
+        .await
+        .context("Failed to read response body")?;
+
+    let parsed = generate_xml_table_vector!(
+        ObjectList => "Contents" in &raw_xml, {
+            Key => key,
+            LastModified => last_modified,
+            Size => size,
+            StorageClass => storage_class,
+        }
+    );
+
+    log_api_response(status, parsed, raw_xml).await
 }
 
 /// Deletes a single bucket from OBS

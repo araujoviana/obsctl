@@ -48,3 +48,14 @@ xml_table! {
         "Type" => bucket_type: String,
     }
 }
+
+xml_table! {
+    ObjectList {
+        "Key (Object Path)" => key: String,
+        "Last Modified" => last_modified: String,
+        // Didn't bother to add Etag but it can be easily added here
+        "Size" => size: String,
+        // REVIEW Owner tag contains a nested id
+        "Storage Class" => storage_class: String,
+    }
+}

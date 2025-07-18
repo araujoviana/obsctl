@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use colored::*;
 use log::{error, info, warn};
 use reqwest::{Response, StatusCode};
-use tabled::Table;
+use tabled::{Table, settings::style::Style};
 
 /// Logs an `anyhow::Error` and its causal chain.
 pub fn log_error_chain(err: anyhow::Error) {
@@ -22,7 +22,11 @@ pub async fn log_api_response<T: tabled::Tabled>(
     let display_body = if raw_body.trim().is_empty() {
         "No text in response body".bright_blue().to_string()
     } else {
-        let table = Table::new(parsed);
+        // TODO document this
+        let mut table = Table::new(parsed);
+        let style = Style::rounded();
+        table.with(style);
+
         format!("{table}")
     };
 
