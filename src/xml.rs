@@ -1,3 +1,5 @@
+// REVIEW failed calls spit different xml structures
+
 // Creates a table-like struct for XML parsing
 macro_rules! xml_table {
     ($struct_name:ident { $($renamed_field:expr => $table_field:ident : $t:ty),* $(,)? }) => {
