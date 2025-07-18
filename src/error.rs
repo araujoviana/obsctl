@@ -2,16 +2,23 @@ use anyhow::{Context, Result};
 use colored::*;
 use log::{error, info, warn};
 use reqwest::Response;
+use tabled::Table;
 use xmltree::{Element, EmitterConfig};
+
+use crate::xml::parse_bucket_list;
 
 // TODO Print parsed and readable XML output
 
 // HACK
 fn pretty_print_xml(xml: String) -> Result<String> {
-    let elem = Element::parse(xml.as_bytes())?;
+    let elem = Element::parse(xml.as_bytes()).context("Failed to parse XML")?;
     let mut out = Vec::new();
     elem.write_with_config(&mut out, EmitterConfig::new().perform_indent(true))
         .context("Failed to write XML")?; // REVIEW bad error message
+
+    let output = Table::new(parse_bucket_list(&xml));
+    println!("{output}");
+
     String::from_utf8(out).context("Failed to convert XML to String")
 }
 

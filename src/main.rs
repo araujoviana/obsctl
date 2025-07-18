@@ -2,6 +2,7 @@ mod auth; // Manages credential loading and validation.
 mod cli; // Defines the command-line interface structure.
 mod error; // Provides error handling and logging utilities.
 mod obs; // Contains OBS API interaction logic.
+mod xml; // XML Parsing
 
 use anyhow::Result;
 use clap::Parser;
