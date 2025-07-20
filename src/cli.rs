@@ -1,5 +1,6 @@
 use clap::{Args, Parser, Subcommand};
 
+// The message that appears when you use "--help"
 const APP_HELP_TEMPLATE: &str = r"
          __              __  __
   ____  / /_  __________/ /_/ /
@@ -26,7 +27,7 @@ pub struct CliArgs {
     #[command(subcommand)]
     pub command: Commands,
 
-    /// OBS region (e.g., la-south-2). Required for all operations, even region-independent ones.
+    /// OBS region (e.g., la-south-2 or santiago). Required for all operations, even region-independent ones.
     #[arg(short, long)]
     pub region: String,
 
@@ -39,6 +40,8 @@ pub struct CliArgs {
     pub sk: Option<String>,
 }
 
+// TODO list regions, just a big print, but useful
+
 #[derive(Subcommand)]
 pub enum Commands {
     // Multiple aliases are good but they pollute the menus too much
@@ -46,7 +49,7 @@ pub enum Commands {
     #[command(visible_alias = "mkb")]
     Create(CreateArgs),
 
-    /// List buckets in all regions
+    /// List buckets in region
     #[command(visible_alias = "lsb")]
     ListBuckets,
 
@@ -66,7 +69,7 @@ pub enum Commands {
     #[command(visible_alias = "get")]
     DownloadObject(DownloadObjectArgs),
 
-    /// Download objects contents to disk
+    /// Delete an object from a bucket
     #[command(visible_alias = "rm")]
     DeleteObject(DeleteObjectArgs),
 
@@ -79,6 +82,8 @@ pub enum Commands {
     #[command(visible_alias = "puts")]
     UploadObjects(UploadObjectsArgs),
 }
+
+// Arguments for commands
 
 #[derive(Args)]
 pub struct CreateArgs {

@@ -20,8 +20,9 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 // TODO IMPORTANT! UNIFY PLURAL COMMANDS WITH SINGULAR COMMANDS!!
+// REVIEW replace reqwest with ureq, the asynchronous functions can be deal with differently
 
-// HMAC-SHA1 type alias for OBS signing, Ouch.
+// HMAC-SHA1 type alias for OBS signing, not ideal 🤷
 type HmacSha1 = Hmac<Sha1>;
 
 #[derive(Clone)]
@@ -41,7 +42,7 @@ struct ObsRequest<'a> {
     canonical_resource: &'a str,
 }
 
-// Workaround sending binary file data to the API
+// Workaround sending binary file data OR text to the API
 enum Body {
     Text(String),
     Binary(Vec<u8>),
@@ -91,6 +92,7 @@ pub async fn create_bucket(
         "<CreateBucketConfiguration><Location>{region}</Location></CreateBucketConfiguration>"
     ));
     let canonical_resource = format!("/{bucket_name}/");
+
     let request = ObsRequest {
         method: Method::PUT,
         url: &url,
@@ -195,7 +197,7 @@ pub async fn list_objects(
     log_api_response(status, parsed, raw_xml).await
 }
 
-// TODO QOL Run a list bucket when the deletion fails
+// TODO QOL Run a "list objects" when the deletion fails
 /// Deletes a single bucket from OBS
 pub async fn delete_bucket(
     client: &Client,
@@ -363,12 +365,8 @@ pub async fn download_object(
     let mut local_path = PathBuf::from(output_directory);
 
     // Create directories for output path
-    fs::create_dir_all(&local_path).with_context(|| {
-        format!(
-            "Failed to write downloaded content to {}",
-            local_path.display()
-        )
-    })?;
+    fs::create_dir_all(&local_path)
+        .with_context(|| format!("Failed to create directory for {}", local_path.display()))?;
     local_path.push(filename);
 
     // Write object's contents to disk
@@ -472,6 +470,7 @@ fn generate_signature(credentials: &Credentials, canonical_string: &str) -> Resu
 
 /// Constructs and sends a signed HTTP request to OBS.
 async fn generate_request(client: &Client, req: ObsRequest<'_>) -> Result<Response> {
+    // Cool spinner
     let spinner = ProgressBar::new_spinner();
     spinner.enable_steady_tick(Duration::from_millis(120));
     spinner.set_style(
@@ -489,28 +488,33 @@ async fn generate_request(client: &Client, req: ObsRequest<'_>) -> Result<Respon
     );
     spinner.set_message("Building canonical string...");
 
+    // Required date format for OBS
     let date_str = Utc::now().format("%a, %d %b %Y %H:%M:%S GMT").to_string();
     let content_type_canonical = req.content_type.as_ref().map_or("", |ct| ct.as_str());
 
+    // Canonical string is used to generate the signature
     let canonical_string = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        req.method.as_str(),
-        req.content_md5,
-        content_type_canonical,
-        date_str,
-        req.canonical_resource,
+        "{}\n{}\n{}\n{}\n{}",   // Newlines are necessary
+        req.method.as_str(),    // HTTP method
+        req.content_md5,        // Base64 MD5 hash of body
+        content_type_canonical, // Optional content type
+        date_str,               // Timestamp
+        req.canonical_resource, // Resource path
     );
 
     debug!("Canonical String for signing:\n{canonical_string}");
 
     spinner.set_message("Generating signature...");
 
+    // Generate HMAC-SHA1 signature using the canonical string
     let signature = generate_signature(req.credentials, &canonical_string)
         .context("Failed to generate request signature")?;
 
     spinner.set_message("Building headers...");
 
+    // Build OBS-compatible headers
     let mut headers = HeaderMap::new();
+
     headers.insert("Date", HeaderValue::from_str(&date_str)?);
     if let Some(ct) = &req.content_type {
         headers.insert("Content-Type", HeaderValue::from_static(ct.as_str()));
@@ -522,6 +526,7 @@ async fn generate_request(client: &Client, req: ObsRequest<'_>) -> Result<Respon
                 .context("Couldn't convert content-md5 into string")?,
         );
     }
+    // Authorization: OBS <AK>:<Signature>
     headers.insert(
         "Authorization",
         HeaderValue::from_str(&format!("OBS {}:{}", req.credentials.ak, signature))?,
@@ -529,13 +534,14 @@ async fn generate_request(client: &Client, req: ObsRequest<'_>) -> Result<Respon
 
     spinner.set_message("Calling OBS API...");
 
-    let req_builder = client.request(req.method.clone(), req.url).headers(headers);
-
-    let req_builder = match &req.body {
+    // Build request with body
+    let mut req_builder = client.request(req.method.clone(), req.url).headers(headers);
+    req_builder = match &req.body {
         Body::Text(s) => req_builder.body(s.clone()),
         Body::Binary(b) => req_builder.body(b.clone()),
     };
 
+    // Execute the request
     let res = req_builder
         .send()
         .await

@@ -1,28 +1,31 @@
 // REVIEW failed calls spit different xml structures
 
-// Creates a table-like struct for XML parsing
+// Creates a struct with the repeated fields in the XML response
 macro_rules! xml_table {
     ($struct_name:ident { $($renamed_field:expr => $table_field:ident : $t:ty),* $(,)? }) => {
         #[derive(tabled::Tabled)]
         pub struct $struct_name {
-            $(
+            $( // Repeats this for every field
                 #[tabled(rename = $renamed_field)]
                 pub $table_field: $t,
             )*
         }
     };
 }
-
+/// Parses XML into a vector of structs.
 #[macro_export]
 macro_rules! xml_to_struct_vec {
     (
         $table_type:ident => $repeated_field:literal in $xml:expr, { $($xml_tag:ident => $field:ident),* $(,)? }
     ) => {{
+        // Unless the API somehow returns invalid XML, this can't break
         let doc = roxmltree::Document::parse($xml).unwrap();
 
+        // Iterate over elements matching the repeated field name
         doc.descendants()
             .filter(|n| n.has_tag_name($repeated_field))
             .map(|node| {
+                // Extract the text of each child element matching the given tag name
                 $(
                     let $field = node
                         .descendants()
@@ -31,16 +34,19 @@ macro_rules! xml_to_struct_vec {
                         .unwrap_or("")
                         .to_string();
                 )*
-
+                // Construct an instance of the struct using the extracted fields
                 $table_type {
                     $(
                         $field: $field,
                     )*
                 }
             })
+            // Collect all constructed structs into a vector
             .collect::<Vec<$table_type>>()
     }};
 }
+
+// REVIEW these are only useful for requests that return XML content
 
 xml_table! {
     BucketList {

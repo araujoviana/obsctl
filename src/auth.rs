@@ -42,7 +42,9 @@ pub fn get_credentials(cli_ak: Option<String>, cli_sk: Option<String>) -> Result
 /// Reads AK/SK credentials from 'credentials.csv' assuming fixed CSV structure.
 fn read_credentials_csv() -> Result<Credentials> {
     info!("Reading AK/SK values from 'credentials.csv'");
+
     let cred_file = File::open("credentials.csv").context("Cannot find credentials.csv")?;
+
     // Initialize CSV reader
     let mut rdr = Reader::from_reader(cred_file);
 

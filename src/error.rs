@@ -7,9 +7,11 @@ use tabled::{Table, settings::style::Style};
 /// Logs an `anyhow::Error` and its causal chain.
 pub fn log_error_chain(err: anyhow::Error) {
     let mut msg = format!("{} {}", "ERROR:".red().bold(), err);
+
     for cause in err.chain().skip(1) {
         msg.push_str(&format!("\nCaused by: {cause}"));
     }
+
     error!("{msg}");
 }
 
@@ -20,13 +22,16 @@ pub async fn log_api_response<T: tabled::Tabled>(
     raw_body: String,
 ) -> Result<()> {
     let display_body = if raw_body.trim().is_empty() {
+        // Empty XML
         "No text in response body".bright_blue().to_string()
+    } else if parsed.is_empty() {
+        // Empty table
+        // FIXME errors aren't included so they could hide!
+        "No entries in response table".bright_yellow().to_string()
     } else {
-        // TODO document this
+        // Table with entries
         let mut table = Table::new(parsed);
-        let style = Style::rounded();
-        table.with(style);
-
+        table.with(Style::rounded());
         format!("{table}")
     };
 
@@ -37,6 +42,7 @@ pub async fn log_api_response<T: tabled::Tabled>(
         display_body
     );
 
+    // Log message based on status (despite API being inconsistent with error codes)
     if status.is_success() {
         info!("{msg}");
     } else {
@@ -46,6 +52,8 @@ pub async fn log_api_response<T: tabled::Tabled>(
     Ok(())
 }
 
+// TODO delete this
+/// Logs the status and body of an API response.
 pub async fn log_api_response_legacy(res: Response) -> Result<()> {
     let status = res.status();
     let body = res.text().await.context("Failed to read response body")?;
