@@ -2,7 +2,7 @@ mod auth; // Manages credential loading and validation.
 mod cli; // Defines the command-line interface structure.
 mod error; // Provides error handling and logging utilities.
 mod obs; // Contains OBS API interaction logic.
-mod xml; // XML Parsing
+mod xml; // Macros for XML0-based structs and parsing
 
 use anyhow::Result;
 use clap::Parser;
@@ -62,7 +62,7 @@ async fn main() -> Result<()> {
     let project_name = if let Some((_, code)) = regions.iter().find(|(_, code)| code == &region_arg)
     {
         let name = code.to_string();
-        info!("{}", format!("Exact matched project name {}", name.cyan()));
+        info!("Exact matched project name {}", name.cyan());
         name
     } else {
         match regions
@@ -74,12 +74,9 @@ async fn main() -> Result<()> {
         {
             Some(name) => {
                 warn!(
-                    "{}",
-                    format!(
-                        "Fuzzy matched region {} into project name {}",
-                        region_arg.yellow(),
-                        name.cyan()
-                    )
+                    "Fuzzy matched region {} into project name {}",
+                    region_arg.yellow(),
+                    name.cyan()
                 );
                 name
             }

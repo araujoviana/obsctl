@@ -8,9 +8,9 @@ use tabled::{Table, settings::style::Style};
 pub fn log_error_chain(err: anyhow::Error) {
     let mut msg = format!("{} {}", "ERROR:".red().bold(), err);
     for cause in err.chain().skip(1) {
-        msg.push_str(&format!("\nCaused by: {}", cause));
+        msg.push_str(&format!("\nCaused by: {cause}"));
     }
-    error!("{}", msg);
+    error!("{msg}");
 }
 
 /// Logs the status and body of an API response.
@@ -38,9 +38,9 @@ pub async fn log_api_response<T: tabled::Tabled>(
     );
 
     if status.is_success() {
-        info!("{}", msg);
+        info!("{msg}");
     } else {
-        warn!("{}", msg);
+        warn!("{msg}");
     }
 
     Ok(())
@@ -62,9 +62,9 @@ pub async fn log_api_response_legacy(res: Response) -> Result<()> {
     };
 
     if status.is_success() {
-        info!("{}", msg);
+        info!("{msg}");
     } else {
-        warn!("{}", msg);
+        warn!("{msg}");
     }
 
     Ok(())

@@ -1,8 +1,8 @@
 use crate::error::log_api_response;
 use crate::error::log_api_response_legacy;
-use crate::generate_xml_table_vector;
 use crate::xml::BucketList;
 use crate::xml::ObjectList;
+use crate::xml_to_struct_vec;
 use anyhow::{Context, Result, anyhow};
 use base64::{Engine as _, engine::general_purpose};
 use chrono::Utc;
@@ -28,6 +28,17 @@ type HmacSha1 = Hmac<Sha1>;
 pub struct Credentials {
     pub ak: String,
     pub sk: String,
+}
+
+/// Represents a structured request to the OBS API.
+struct ObsRequest<'a> {
+    method: Method,
+    url: &'a str,
+    credentials: &'a Credentials,
+    body: Body,
+    content_type: Option<ContentType>,
+    content_md5: &'a str,
+    canonical_resource: &'a str,
 }
 
 // Workaround sending binary file data to the API
@@ -75,23 +86,22 @@ pub async fn create_bucket(
     region: String,
     credentials: &Credentials,
 ) -> Result<()> {
-    let url = format!("http://{}.obs.{}.myhuaweicloud.com", bucket_name, region);
+    let url = format!("http://{bucket_name}.obs.{region}.myhuaweicloud.com");
     let body = Body::Text(format!(
         "<CreateBucketConfiguration><Location>{region}</Location></CreateBucketConfiguration>"
     ));
-    let canonical_resource = format!("/{}/", bucket_name);
-
-    let response = generate_request(
-        client,
-        Method::PUT,
-        &url,
+    let canonical_resource = format!("/{bucket_name}/");
+    let request = ObsRequest {
+        method: Method::PUT,
+        url: &url,
         credentials,
         body,
-        Some(ContentType::ApplicationXml),
-        "",
-        &canonical_resource,
-    )
-    .await?;
+        content_type: Some(ContentType::ApplicationXml),
+        content_md5: "",
+        canonical_resource: &canonical_resource,
+    };
+
+    let response = generate_request(client, request).await?;
     log_api_response_legacy(response).await
 }
 
@@ -101,21 +111,21 @@ pub async fn list_buckets(
     region: String,
     credentials: &Credentials,
 ) -> Result<()> {
-    let url = format!("http://obs.{}.myhuaweicloud.com", region);
+    let url = format!("http://obs.{region}.myhuaweicloud.com");
     let body = Body::Text("".to_string());
     let canonical_resource = "/";
 
-    let response = generate_request(
-        client,
-        Method::GET,
-        &url,
+    let request = ObsRequest {
+        method: Method::GET,
+        url: &url,
         credentials,
         body,
-        None,
-        "",
+        content_type: None,
+        content_md5: "",
         canonical_resource,
-    )
-    .await?;
+    };
+
+    let response = generate_request(client, request).await?;
 
     let status = response.status(); // extract before consuming
     let raw_xml = response
@@ -123,7 +133,7 @@ pub async fn list_buckets(
         .await
         .context("Failed to read response body")?;
 
-    let parsed = generate_xml_table_vector!(
+    let parsed = xml_to_struct_vec!(
         BucketList => "Bucket" in &raw_xml, {
             Name => name,
             CreationDate => creation_date,
@@ -146,28 +156,26 @@ pub async fn list_objects(
     credentials: &Credentials,
 ) -> Result<()> {
     let url = format!(
-        "http://{}.obs.{}.myhuaweicloud.com/{}",
-        bucket_name,
-        region,
+        "http://{bucket_name}.obs.{region}.myhuaweicloud.com/{}",
         query_params!(
             "prefix" => prefix,
             "marker" => marker,
         )
     );
     let body = Body::Text("".to_string());
-    let canonical_resource = format!("/{}/", bucket_name);
+    let canonical_resource = format!("/{bucket_name}/");
 
-    let response = generate_request(
-        client,
-        Method::GET,
-        &url,
+    let request = ObsRequest {
+        method: Method::GET,
+        url: &url,
         credentials,
         body,
-        None,
-        "",
-        &canonical_resource,
-    )
-    .await?;
+        content_type: None,
+        content_md5: "",
+        canonical_resource: &canonical_resource,
+    };
+
+    let response = generate_request(client, request).await?;
 
     let status = response.status(); // extract before consuming
     let raw_xml = response
@@ -175,7 +183,7 @@ pub async fn list_objects(
         .await
         .context("Failed to read response body")?;
 
-    let parsed = generate_xml_table_vector!(
+    let parsed = xml_to_struct_vec!(
         ObjectList => "Contents" in &raw_xml, {
             Key => key,
             LastModified => last_modified,
@@ -187,6 +195,7 @@ pub async fn list_objects(
     log_api_response(status, parsed, raw_xml).await
 }
 
+// TODO QOL Run a list bucket when the deletion fails
 /// Deletes a single bucket from OBS
 pub async fn delete_bucket(
     client: &Client,
@@ -194,22 +203,23 @@ pub async fn delete_bucket(
     region: String,
     credentials: &Credentials,
 ) -> Result<()> {
-    let url = format!("http://{}.obs.{}.myhuaweicloud.com/", bucket_name, region);
+    let url = format!("http://{bucket_name}.obs.{region}.myhuaweicloud.com/");
 
     let body = Body::Text("".to_string());
-    let canonical_resource = format!("/{}/", bucket_name);
+    let canonical_resource = format!("/{bucket_name}/");
 
-    let response = generate_request(
-        client,
-        Method::DELETE,
-        &url,
+    let request = ObsRequest {
+        method: Method::DELETE,
+        url: &url,
         credentials,
         body,
-        None,
-        "",
-        &canonical_resource,
-    )
-    .await?;
+        content_type: None,
+        content_md5: "",
+        canonical_resource: &canonical_resource,
+    };
+
+    let response = generate_request(client, request).await?;
+
     log_api_response_legacy(response).await
 }
 
@@ -270,10 +280,7 @@ pub async fn upload_object(
             })?,
     };
 
-    let url = format!(
-        "http://{}.obs.{}.myhuaweicloud.com/{}",
-        bucket_name, region, object_name
-    ); // Object name is not a query parameter
+    let url = format!("http://{bucket_name}.obs.{region}.myhuaweicloud.com/{object_name}"); // Object name is not a query parameter
 
     // Read file content as raw bytes
     let body_bytes = fs::read(file_path)
@@ -282,19 +289,19 @@ pub async fn upload_object(
     let digest = md5::compute(&body_bytes);
     let content_md5 = general_purpose::STANDARD.encode(digest.as_ref());
 
-    let canonical_resource = format!("/{}/{}", bucket_name, object_name);
+    let canonical_resource = format!("/{bucket_name}/{object_name}");
 
-    let response = generate_request(
-        client,
-        Method::PUT,
-        &url,
+    let request = ObsRequest {
+        method: Method::PUT,
+        url: &url,
         credentials,
-        Body::Binary(body_bytes),
-        Some(ContentType::ApplicationOctetStream),
-        &content_md5,
-        &canonical_resource,
-    )
-    .await?;
+        body: Body::Binary(body_bytes),
+        content_type: Some(ContentType::ApplicationOctetStream),
+        content_md5: &content_md5,
+        canonical_resource: &canonical_resource,
+    };
+
+    let response = generate_request(client, request).await?;
 
     log_api_response_legacy(response).await
 }
@@ -309,30 +316,27 @@ pub async fn download_object(
     credentials: &Credentials,
 ) -> Result<()> {
     // Remove first '/' if present
-    let object_path = if object_path.starts_with('/') {
-        &object_path[1..]
+    let object_path = if let Some(stripped_path) = object_path.strip_prefix('/') {
+        stripped_path
     } else {
         object_path
     };
 
-    let url = format!(
-        "http://{}.obs.{}.myhuaweicloud.com/{}",
-        bucket_name, region, object_path
-    );
+    let url = format!("http://{bucket_name}.obs.{region}.myhuaweicloud.com/{object_path}");
     let body = Body::Text("".to_string());
-    let canonical_resource = format!("/{}/{}", bucket_name, object_path);
+    let canonical_resource = format!("/{bucket_name}/{object_path}");
 
-    let response = generate_request(
-        client,
-        Method::GET,
-        &url,
+    let request = ObsRequest {
+        method: Method::GET,
+        url: &url,
         credentials,
         body,
-        None,
-        "",
-        &canonical_resource,
-    )
-    .await?;
+        content_type: None,
+        content_md5: "",
+        canonical_resource: &canonical_resource,
+    };
+
+    let response = generate_request(client, request).await?;
 
     if !response.status().is_success() {
         log_api_response_legacy(response).await?;
@@ -434,24 +438,21 @@ pub async fn delete_object(
     object_path: &str,
     credentials: &Credentials,
 ) -> Result<()> {
-    let url = format!(
-        "http://{}.obs.{}.myhuaweicloud.com/{}",
-        bucket_name, region, object_path
-    );
+    let url = format!("http://{bucket_name}.obs.{region}.myhuaweicloud.com/{object_path}");
     let body = Body::Text("".to_string());
-    let canonical_resource = format!("/{}/{}", bucket_name, object_path);
+    let canonical_resource = format!("/{bucket_name}/{object_path}");
 
-    let response = generate_request(
-        client,
-        Method::DELETE,
-        &url,
+    let request = ObsRequest {
+        method: Method::DELETE,
+        url: &url,
         credentials,
         body,
-        None,
-        "",
-        &canonical_resource,
-    )
-    .await?;
+        content_type: None,
+        content_md5: "",
+        canonical_resource: &canonical_resource,
+    };
+
+    let response = generate_request(client, request).await?;
 
     log_api_response_legacy(response).await
 }
@@ -470,20 +471,9 @@ fn generate_signature(credentials: &Credentials, canonical_string: &str) -> Resu
 }
 
 /// Constructs and sends a signed HTTP request to OBS.
-async fn generate_request(
-    client: &Client,
-    method: Method,
-    url: &str,
-    credentials: &Credentials,
-    body: Body,
-    content_type: Option<ContentType>,
-    content_md5: &str,
-    canonical_resource: &str,
-) -> Result<Response> {
-    // Spinner, for style
+async fn generate_request(client: &Client, req: ObsRequest<'_>) -> Result<Response> {
     let spinner = ProgressBar::new_spinner();
     spinner.enable_steady_tick(Duration::from_millis(120));
-    // Style from https://github.com/console-rs/indicatif/blob/main/examples/long-spinner.rs
     spinner.set_style(
         ProgressStyle::with_template("{spinner:.red} {msg}")
             .unwrap()
@@ -499,61 +489,54 @@ async fn generate_request(
     );
     spinner.set_message("Building canonical string...");
 
-    // Get current time in required GMT format.
     let date_str = Utc::now().format("%a, %d %b %Y %H:%M:%S GMT").to_string();
-    let content_type_canonical = content_type.as_ref().map_or("", |ct| ct.as_str());
+    let content_type_canonical = req.content_type.as_ref().map_or("", |ct| ct.as_str());
 
-    // Assemble the canonical string for signing.
     let canonical_string = format!(
         "{}\n{}\n{}\n{}\n{}",
-        method.as_str(),
-        content_md5,
+        req.method.as_str(),
+        req.content_md5,
         content_type_canonical,
         date_str,
-        canonical_resource,
+        req.canonical_resource,
     );
 
-    debug!("Canonical String for signing:\n{}", canonical_string);
+    debug!("Canonical String for signing:\n{canonical_string}");
 
     spinner.set_message("Generating signature...");
 
-    let signature = generate_signature(credentials, &canonical_string)
+    let signature = generate_signature(req.credentials, &canonical_string)
         .context("Failed to generate request signature")?;
 
     spinner.set_message("Building headers...");
 
-    // Build HTTP headers.
     let mut headers = HeaderMap::new();
     headers.insert("Date", HeaderValue::from_str(&date_str)?);
-    if let Some(ct) = content_type {
+    if let Some(ct) = &req.content_type {
         headers.insert("Content-Type", HeaderValue::from_static(ct.as_str()));
     }
-    // Add the Content-MD5 header if it's not empty.
-    if !content_md5.is_empty() {
+    if !req.content_md5.is_empty() {
         headers.insert(
             "Content-MD5",
-            HeaderValue::from_str(content_md5)
+            HeaderValue::from_str(req.content_md5)
                 .context("Couldn't convert content-md5 into string")?,
         );
     }
-
-    // Add authorization header with AK and signature.
     headers.insert(
         "Authorization",
-        HeaderValue::from_str(&format!("OBS {}:{}", credentials.ak, signature))?,
+        HeaderValue::from_str(&format!("OBS {}:{}", req.credentials.ak, signature))?,
     );
 
     spinner.set_message("Calling OBS API...");
 
-    // Send the request.
-    let req = client.request(method, url).headers(headers);
+    let req_builder = client.request(req.method.clone(), req.url).headers(headers);
 
-    let req = match body {
-        Body::Text(s) => req.body(s),
-        Body::Binary(b) => req.body(b),
+    let req_builder = match &req.body {
+        Body::Text(s) => req_builder.body(s.clone()),
+        Body::Binary(b) => req_builder.body(b.clone()),
     };
 
-    let res = req
+    let res = req_builder
         .send()
         .await
         .context("Failed to send request to OBS endpoint")?;

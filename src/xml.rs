@@ -14,7 +14,7 @@ macro_rules! xml_table {
 }
 
 #[macro_export]
-macro_rules! generate_xml_table_vector {
+macro_rules! xml_to_struct_vec {
     (
         $table_type:ident => $repeated_field:literal in $xml:expr, { $($xml_tag:ident => $field:ident),* $(,)? }
     ) => {{
