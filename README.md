@@ -10,9 +10,11 @@ Its focus is on making common operations as fast and simple as possible. It is n
 
 -   **Bucket Management**: Create, list, and delete buckets.
 -   **Object Management**: Upload, download, delete, and list objects.
+-   **Command Aliases**: Use convenient shortcuts for common commands (e.g., `lsb` for `list-buckets`).
 -   **(some) Parallel Operations**: Upload or delete multiple objects/buckets concurrently.
 -   **Flexible Authentication**: Load credentials from command-line flags, environment variables, or a `credentials.csv` file.
 -   **Note on API Output:** The tool now parses and pretty-prints responses from the OBS API, replacing raw XML output with clear, human-readable formatting.
+
 ## Installation
 
 ### Prerequisites
@@ -61,6 +63,8 @@ cargo install --path .
 ## Usage
 
 The basic command structure is `obsctl -r <region> <COMMAND> [ARGS]`.
+
+**Note on Regions**: You can specify a region using its official code (e.g., `la-south-2`) or by a major city name (e.g., `santiago`). The tool will automatically map the city to its corresponding region code.
 
 ### Examples
 
@@ -120,6 +124,16 @@ obsctl -r us-east-3 rm -b my-new-bucket -o "archive/2025/image.png"
 | `delete-buckets`|`rmbs`| (Experimental) Delete multiple buckets.   |
 | `upload-objects`|`puts`| (Experimental) Upload multiple objects.   |
 
+### Command-Specific Options
+
+**`list-objects` (`ls`)**
+
+-   `--prefix <PREFIX>`: Filter objects by a specific prefix.
+-   `--marker <MARKER>`: List objects that appear after the specified marker.
+
+**`download-object` (`get`)**
+
+-   `-d, --output-dir <DIRECTORY>`: Specify a local directory to save the downloaded file to. Defaults to the current directory.
 
 ## License
 
