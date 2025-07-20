@@ -90,7 +90,7 @@ obsctl -r us-east-3 put -b my-new-bucket -f ./image.png -o "archive/2025/image.p
 
 **Upload all `.jpg` files in the current directory in parallel:**
 ```bash
-# Note: Your shell expands *.jpg into a list of files. This behavior may
+# Note: This behavior may
 # differ on Windows (cmd.exe).
 obsctl -r us-east-3 puts -b my-new-bucket -f *.jpg
 ```
