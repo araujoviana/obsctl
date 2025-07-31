@@ -1,4 +1,4 @@
-'''name: Release
+name: Release
 
 on:
   release:
@@ -61,4 +61,3 @@ jobs:
           tag: ${{ github.ref }}
           overwrite: true
           file_glob: true
-''
