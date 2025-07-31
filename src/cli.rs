@@ -87,15 +87,13 @@ pub enum Commands {
 
 #[derive(Args)]
 pub struct CreateArgs {
-    /// The bucket to upload to
-    #[arg(short, long)]
+    /// The bucket to create
     pub bucket: String,
 }
 
 #[derive(Args)]
 pub struct ListObjectsArgs {
-    /// The bucket to upload to
-    #[arg(short, long)]
+    /// The bucket to list objects from
     pub bucket: String,
     /// Include only elements with the specified prefix
     #[arg(short, long)]
@@ -107,8 +105,7 @@ pub struct ListObjectsArgs {
 
 #[derive(Args)]
 pub struct DeleteBucketArgs {
-    /// The bucket to upload to
-    #[arg(short, long)]
+    /// The bucket to delete
     pub bucket: String,
 }
 
@@ -122,7 +119,6 @@ pub struct DeleteBucketsArgs {
 #[derive(Args)]
 pub struct UploadObjectArgs {
     /// The bucket to upload to
-    #[arg(short, long)]
     pub bucket: String,
     /// File path
     #[arg(short, long)]
@@ -145,7 +141,6 @@ pub struct UploadObjectsArgs {
 #[derive(Args)]
 pub struct DownloadObjectArgs {
     /// The bucket to download from
-    #[arg(short, long)]
     pub bucket: String,
     /// Object path in bucket
     #[arg(short, long)]
@@ -158,7 +153,6 @@ pub struct DownloadObjectArgs {
 #[derive(Args)]
 pub struct DeleteObjectArgs {
     /// The bucket where the object is
-    #[arg(short, long)]
     pub bucket: String,
     /// Object path in bucket
     #[arg(short, long)]
