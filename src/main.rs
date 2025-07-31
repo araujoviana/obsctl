@@ -179,7 +179,7 @@ fn fuzzy_match_region(input_region: &str) -> String {
     debug!("Pattern matching region");
 
     // Try to find an exact match of the project names
-    let project_name = if let Some((_, code)) = HUAWEI_CLOUD_REGIONS
+    if let Some((_, code)) = HUAWEI_CLOUD_REGIONS
         .iter()
         .find(|(_, code)| code == &input_region)
     {
@@ -190,7 +190,7 @@ fn fuzzy_match_region(input_region: &str) -> String {
         // Attempt fuzzy matching using levenshtein distance
         match HUAWEI_CLOUD_REGIONS
             .iter()
-            .map(|(name, code)| (levenshtein(&input_region, &name.to_lowercase()), code)) // Calculate distance between input and region names
+            .map(|(name, code)| (levenshtein(input_region, &name.to_lowercase()), code)) // Calculate distance between input and region names
             .filter(|(dist, _)| *dist <= LEVENSHTEIN_THRESHOLD)                           // Filter matches within allowed threshold
             .min_by_key(|(dist, _)| *dist)                                                // Pick the closest match
             .map(|(_, code)| code.to_string())                                            // Extract the equivalent project name
@@ -214,6 +214,5 @@ fn fuzzy_match_region(input_region: &str) -> String {
                 std::process::exit(1);
             }
         }
-    };
-    project_name
+    }
 }
