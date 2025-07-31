@@ -1,0 +1,74 @@
+name: Build and Release
+
+on:
+  release:
+    types: [created]
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact_name: obsctl-linux-amd64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact_name: obsctl-windows-amd64.exe
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact_name: obsctl-macos-amd64
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Build binary
+        run: cargo build --release --target ${{ matrix.target }}
+        env:
+          CARGO_TERM_COLOR: always
+
+      - name: Package binary for artifact upload
+        shell: bash
+        run: |
+          mkdir -p dist
+          if [ "${{ runner.os }}" == "Windows" ]; then
+            cp target/${{ matrix.target }}/release/obsctl.exe dist/${{ matrix.artifact_name }}
+          else
+            cp target/${{ matrix.target }}/release/obsctl dist/${{ matrix.artifact_name }}
+          fi
+      - name: Upload artifact for release job
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: dist/${{ matrix.artifact_name }}
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Prepare files for release
+        shell: bash
+        run: |
+          # The download-artifact action creates subdirectories for each artifact.
+          # We want to move all files into the top-level 'dist' directory for easy upload.
+          find dist -type f -exec mv {} dist/ \;
+      - name: Publish release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
