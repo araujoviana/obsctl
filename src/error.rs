@@ -1,8 +1,8 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use colored::*;
 use log::{error, info, warn};
-use reqwest::{Response, StatusCode};
-use tabled::{Table, settings::style::Style};
+use reqwest::StatusCode;
+use tabled::{settings::style::Style, Table, Tabled};
 
 /// Logs an `anyhow::Error` and its causal chain.
 pub fn log_error_chain(err: anyhow::Error) {
@@ -16,23 +16,23 @@ pub fn log_error_chain(err: anyhow::Error) {
 }
 
 /// Logs the status and body of an API response.
-pub async fn log_api_response<T: tabled::Tabled>(
+pub async fn log_api_response<T: Tabled>(
     status: StatusCode,
-    parsed: Vec<T>,
-    raw_body: String,
+    parsed: Option<Vec<T>>,
+    raw_body: &str,
 ) -> Result<()> {
     let display_body = if raw_body.trim().is_empty() {
-        // Empty XML
         "No text in response body".bright_blue().to_string()
-    } else if parsed.is_empty() {
-        // Empty table
-        // FIXME errors aren't included so they could hide!
-        "No entries in response table".bright_yellow().to_string()
+    } else if let Some(parsed_data) = parsed {
+        if parsed_data.is_empty() {
+            "No entries in response table".bright_yellow().to_string()
+        } else {
+            let mut table = Table::new(parsed_data);
+            table.with(Style::rounded());
+            format!("{table}")
+        }
     } else {
-        // Table with entries
-        let mut table = Table::new(parsed);
-        table.with(Style::rounded());
-        format!("{table}")
+        raw_body.to_string()
     };
 
     let msg = format!(
@@ -41,33 +41,6 @@ pub async fn log_api_response<T: tabled::Tabled>(
         status,
         display_body
     );
-
-    // Log message based on status (despite API being inconsistent with error codes)
-    if status.is_success() {
-        info!("{msg}");
-    } else {
-        warn!("{msg}");
-    }
-
-    Ok(())
-}
-
-// TODO delete this
-/// Logs the status and body of an API response.
-pub async fn log_api_response_legacy(res: Response) -> Result<()> {
-    let status = res.status();
-    let body = res.text().await.context("Failed to read response body")?;
-
-    let msg = if body.trim().is_empty() {
-        format!(
-            "{} {}\n{}",
-            "Result:".bright_green().bold(),
-            status,
-            "No text in response body".bright_blue()
-        )
-    } else {
-        format!("{} {}\n{}", "Result:".bright_green().bold(), status, body)
-    };
 
     if status.is_success() {
         info!("{msg}");

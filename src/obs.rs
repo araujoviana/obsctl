@@ -1,5 +1,4 @@
 use crate::error::log_api_response;
-use crate::error::log_api_response_legacy;
 use crate::xml::BucketList;
 use crate::xml::ObjectList;
 use crate::xml_to_struct_vec;
@@ -104,7 +103,10 @@ pub async fn create_bucket(
     };
 
     let response = generate_request(client, request).await?;
-    log_api_response_legacy(response).await
+    let status = response.status();
+    let body = response.text().await?;
+
+    log_api_response(status, None::<Vec<String>>, &body).await
 }
 
 /// Sends a request to list all OBS buckets.
@@ -144,7 +146,7 @@ pub async fn list_buckets(
         }
     );
 
-    log_api_response(status, parsed, raw_xml).await
+    log_api_response(status, Some(parsed), &raw_xml).await
 }
 
 // TODO add object filtering
@@ -194,7 +196,7 @@ pub async fn list_objects(
         }
     );
 
-    log_api_response(status, parsed, raw_xml).await
+    log_api_response(status, Some(parsed), &raw_xml).await
 }
 
 // TODO QOL Run a "list objects" when the deletion fails
@@ -221,8 +223,10 @@ pub async fn delete_bucket(
     };
 
     let response = generate_request(client, request).await?;
+    let status = response.status();
+    let body = response.text().await?;
 
-    log_api_response_legacy(response).await
+    log_api_response(status, None::<Vec<String>>, &body).await
 }
 
 /// Deletes multiple buckets asynchronously from OBS
@@ -304,8 +308,10 @@ pub async fn upload_object(
     };
 
     let response = generate_request(client, request).await?;
+    let status = response.status();
+    let body = response.text().await?;
 
-    log_api_response_legacy(response).await
+    log_api_response(status, None::<Vec<String>>, &body).await
 }
 
 /// Download an object from a bucket
@@ -341,7 +347,10 @@ pub async fn download_object(
     let response = generate_request(client, request).await?;
 
     if !response.status().is_success() {
-        log_api_response_legacy(response).await?;
+        let status = response.status();
+        let body = response.text().await?;
+
+        log_api_response(status, None::<Vec<String>>, &body).await?;
         return Err(anyhow!(
             "Failed to download object: Server returned non-success status."
         ));
@@ -451,8 +460,10 @@ pub async fn delete_object(
     };
 
     let response = generate_request(client, request).await?;
+    let status = response.status();
+    let body = response.text().await?;
 
-    log_api_response_legacy(response).await
+    log_api_response(status, None::<Vec<String>>, &body).await
 }
 
 /// Computes the HMAC-SHA1 signature for a canonical string.
