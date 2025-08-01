@@ -9,6 +9,7 @@ use base64::{Engine as _, engine::general_purpose};
 use chrono::Utc;
 use colored::Colorize;
 use futures::future::join_all;
+use futures::stream::{FuturesUnordered, StreamExt};
 use hmac::{Hmac, Mac};
 use indicatif::{ProgressBar, ProgressStyle};
 use log::debug;
@@ -18,10 +19,12 @@ use reqwest::header::{HeaderMap, HeaderValue};
 use reqwest::{Client, Method, Response};
 use sha1::Sha1;
 use std::fs;
-use std::fs::File;
 use std::io::Read;
+use std::io::Seek;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::Semaphore;
 
 // TODO IMPORTANT! UNIFY PLURAL COMMANDS WITH SINGULAR COMMANDS!!
 // REVIEW replace reqwest with ureq, the asynchronous functions can be deal with differently
@@ -267,6 +270,7 @@ pub async fn delete_multiple_buckets(
     Ok(())
 }
 
+// FIXME Unicode filename support (percent encoding)
 /// Upload an object to a bucket
 pub async fn upload_object(
     client: &Client,
@@ -276,7 +280,6 @@ pub async fn upload_object(
     object_path: &Option<String>,
     credentials: &Credentials,
 ) -> Result<()> {
-    // Extract the filename from the path to use as the object key
     let object_name = match object_path {
         Some(custom_path) => custom_path.clone(),
         None => Path::new(file_path)
@@ -286,16 +289,17 @@ pub async fn upload_object(
             .ok_or_else(|| anyhow!("Invalid or missing filename: {}", file_path.blue()))?,
     };
 
-    const PART_SIZE: u64 = 5 * 1024 * 1024; // REVIEW 5 MB
-    const MAX_PARTS: u32 = 10_000; // REVIEW
+    const PART_SIZE: u64 = 50 * 1024 * 1024;
+    const MAX_PARTS: u32 = 10_000;
+    const SEMAPHORE_SIZE: usize = 32;
 
-    let metadata = tokio::fs::metadata(file_path) // REVIEW Importing both 'fs'es
+    let metadata = tokio::fs::metadata(file_path)
         .await
         .context("Failed to read file metadata")?;
     let file_size = metadata.len();
 
     let init_url =
-        format!("http://{bucket_name}.obs.{region}.myhuaweicloud.com/{object_name}?uploads"); // Gets an UploadID
+        format!("http://{bucket_name}.obs.{region}.myhuaweicloud.com/{object_name}?uploads");
 
     let canonical_resource = format!("/{bucket_name}/{object_name}?uploads");
 
@@ -317,7 +321,6 @@ pub async fn upload_object(
     }
     let init_body = init_response.text().await?;
 
-    // REVIEW Parse UploadId from XML
     let upload_id = init_body
         .split("<UploadId>")
         .nth(1)
@@ -325,67 +328,93 @@ pub async fn upload_object(
         .ok_or_else(|| anyhow!("Failed to parse UploadId"))?
         .to_string();
 
-    // REVIEW Upload parts
-    let mut file = File::open(file_path).context("Failed to open file at {file_path}")?;
-    let mut buffer = vec![0u8; PART_SIZE as usize];
-    let mut parts = Vec::new();
-    let mut offset = 0;
+    let semaphore = Arc::new(Semaphore::new(SEMAPHORE_SIZE));
+    let mut part_futures = FuturesUnordered::new();
+
+    let mut offsets = vec![];
+    let mut current_offset = 0;
     let mut part_number = 1;
-
-    while offset < file_size {
-        let bytes_to_read = std::cmp::min(PART_SIZE, file_size - offset) as usize;
-        let bytes_read = file.read(&mut buffer[..bytes_to_read])?;
-        if bytes_read == 0 {
-            break;
-        }
-        let part_data = &buffer[..bytes_read];
-        let digest = md5::compute(part_data);
-        let content_md5 = general_purpose::STANDARD.encode(digest.as_ref());
-
-        let part_url = format!(
-            "http://{bucket_name}.obs.{region}.myhuaweicloud.com/{object_name}?partNumber={part_number}&uploadId={upload_id}",
-        );
-        let canonical_resource =
-            format!("/{bucket_name}/{object_name}?partNumber={part_number}&uploadId={upload_id}",);
-
-        let part_request = ObsRequest {
-            method: Method::PUT,
-            url: &part_url,
-            credentials,
-            body: Body::Binary(part_data.to_vec()),
-            content_type: Some(ContentType::ApplicationOctetStream),
-            content_md5: &content_md5,
-            canonical_resource: &canonical_resource,
-        };
-
-        let part_response = generate_request(client, part_request).await?;
-        if !part_response.status().is_success() {
-            let status = part_response.status();
-            let body = part_response.text().await?;
-            return Err(anyhow!(
-                "Part {part_number} upload failed: {status} - {body}",
-            ));
-        }
-        let etag = part_response
-            .headers()
-            .get("Etag")
-            .ok_or_else(|| anyhow!("Missing ETag for part {}", part_number))?
-            .to_str()?;
-
-        parts.push(Part {
-            part_number,
-            etag: etag.to_string(),
-        });
-
-        offset += bytes_read as u64;
-
+    while current_offset < file_size {
+        let size = std::cmp::min(PART_SIZE, file_size - current_offset);
+        offsets.push((part_number, current_offset, size));
+        current_offset += size;
         part_number += 1;
         if part_number > MAX_PARTS {
             return Err(anyhow!("Too many parts, exceeded {}", MAX_PARTS));
         }
     }
 
-    // Complete multipart upload
+    let shared_credentials = Arc::new(credentials.clone());
+    let shared_client = client.clone();
+
+    for (part_number, offset, size) in offsets {
+        let permit = semaphore.clone().acquire_owned().await?;
+        let client = shared_client.clone();
+        let credentials = shared_credentials.clone();
+        let object_name = object_name.clone();
+        let upload_id = upload_id.clone();
+        let region = region.clone();
+        let bucket_name = bucket_name.to_string();
+        let file_path = file_path.to_string();
+
+        part_futures.push(tokio::spawn(async move {
+            let _permit = permit;
+
+            let mut file = std::fs::File::open(&file_path)?;
+            file.seek(std::io::SeekFrom::Start(offset))?;
+            let mut buffer = vec![0u8; size as usize];
+            file.read_exact(&mut buffer)?;
+
+            let digest = md5::compute(&buffer);
+            let content_md5 = general_purpose::STANDARD.encode(digest.as_ref());
+
+            let part_url = format!(
+                "http://{bucket_name}.obs.{region}.myhuaweicloud.com/{object_name}?partNumber={part_number}&uploadId={upload_id}",
+            );
+            let canonical_resource =
+                format!("/{bucket_name}/{object_name}?partNumber={part_number}&uploadId={upload_id}");
+
+            let part_request = ObsRequest {
+                method: Method::PUT,
+                url: &part_url,
+                credentials: &credentials,
+                body: Body::Binary(buffer),
+                content_type: Some(ContentType::ApplicationOctetStream),
+                content_md5: &content_md5,
+                canonical_resource: &canonical_resource,
+            };
+
+            let response = generate_request(&client, part_request).await?;
+            if !response.status().is_success() {
+                let status = response.status();
+                let body = response.text().await?;
+                return Err(anyhow!(
+                    "Part {part_number} upload failed: {status} - {body}"
+                ));
+            }
+
+            let etag = response
+                .headers()
+                .get("Etag")
+                .ok_or_else(|| anyhow!("Missing ETag for part {}", part_number))?
+                .to_str()?
+                .to_string();
+
+            Ok::<_, anyhow::Error>(Part {
+                part_number,
+                etag,
+            })
+        }));
+    }
+
+    let mut parts = Vec::new();
+    while let Some(res) = part_futures.next().await {
+        let part = res??;
+        parts.push(part);
+    }
+
+    parts.sort_by_key(|p| p.part_number);
+
     let complete_body = CompleteMultipartUpload { parts };
     let complete_xml = to_string(&complete_body)?;
     let complete_url = format!(
@@ -412,58 +441,6 @@ pub async fn upload_object(
 
     log_api_response(status, None::<Vec<String>>, &body).await?;
     Ok(())
-}
-
-/// Upload an object to a bucket
-pub async fn upload_object_bak(
-    client: &Client,
-    bucket_name: &str,
-    region: String,
-    file_path: &str,
-    object_path: &Option<String>,
-    credentials: &Credentials,
-) -> Result<()> {
-    // Extract the filename from the path to use as the object key
-    let object_name = match object_path {
-        Some(custom_path) => custom_path.clone(),
-        None => Path::new(file_path)
-            .file_name()
-            .and_then(|s| s.to_str())
-            .map(String::from)
-            .ok_or_else(|| {
-                anyhow!(
-                    "Invalid or missing filename in path, and no object-path provided: {}",
-                    file_path.blue()
-                )
-            })?,
-    };
-
-    let url = format!("http://{bucket_name}.obs.{region}.myhuaweicloud.com/{object_name}"); // Object name is not a query parameter
-
-    // Read file content as raw bytes
-    let body_bytes = fs::read(file_path)
-        .with_context(|| format!("Failed to read file at path {}", file_path.blue()))?;
-
-    let digest = md5::compute(&body_bytes);
-    let content_md5 = general_purpose::STANDARD.encode(digest.as_ref());
-
-    let canonical_resource = format!("/{bucket_name}/{object_name}");
-
-    let request = ObsRequest {
-        method: Method::PUT,
-        url: &url,
-        credentials,
-        body: Body::Binary(body_bytes),
-        content_type: Some(ContentType::ApplicationOctetStream),
-        content_md5: &content_md5,
-        canonical_resource: &canonical_resource,
-    };
-
-    let response = generate_request(client, request).await?;
-    let status = response.status();
-    let body = response.text().await?;
-
-    log_api_response(status, None::<Vec<String>>, &body).await
 }
 
 /// Download an object from a bucket
