@@ -1,6 +1,8 @@
 use crate::error::log_api_response;
 use crate::xml::BucketList;
+use crate::xml::CompleteMultipartUpload;
 use crate::xml::ObjectList;
+use crate::xml::Part;
 use crate::xml_to_struct_vec;
 use anyhow::{Context, Result, anyhow};
 use base64::{Engine as _, engine::general_purpose};
@@ -11,10 +13,13 @@ use hmac::{Hmac, Mac};
 use indicatif::{ProgressBar, ProgressStyle};
 use log::debug;
 use log::error;
+use quick_xml::se::to_string;
 use reqwest::header::{HeaderMap, HeaderValue};
 use reqwest::{Client, Method, Response};
 use sha1::Sha1;
 use std::fs;
+use std::fs::File;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -264,6 +269,153 @@ pub async fn delete_multiple_buckets(
 
 /// Upload an object to a bucket
 pub async fn upload_object(
+    client: &Client,
+    bucket_name: &str,
+    region: String,
+    file_path: &str,
+    object_path: &Option<String>,
+    credentials: &Credentials,
+) -> Result<()> {
+    // Extract the filename from the path to use as the object key
+    let object_name = match object_path {
+        Some(custom_path) => custom_path.clone(),
+        None => Path::new(file_path)
+            .file_name()
+            .and_then(|s| s.to_str())
+            .map(String::from)
+            .ok_or_else(|| anyhow!("Invalid or missing filename: {}", file_path.blue()))?,
+    };
+
+    const PART_SIZE: u64 = 5 * 1024 * 1024; // REVIEW 5 MB
+    const MAX_PARTS: u32 = 10_000; // REVIEW
+
+    let metadata = tokio::fs::metadata(file_path) // REVIEW Importing both 'fs'es
+        .await
+        .context("Failed to read file metadata")?;
+    let file_size = metadata.len();
+
+    let init_url =
+        format!("http://{bucket_name}.obs.{region}.myhuaweicloud.com/{object_name}?uploads"); // Gets an UploadID
+
+    let canonical_resource = format!("/{bucket_name}/{object_name}?uploads");
+
+    let init_request = ObsRequest {
+        method: Method::POST,
+        url: &init_url,
+        credentials,
+        body: Body::Text("".to_string()),
+        content_type: None,
+        content_md5: "",
+        canonical_resource: &canonical_resource,
+    };
+
+    let init_response = generate_request(client, init_request).await?;
+    if !init_response.status().is_success() {
+        let status = init_response.status();
+        let body = init_response.text().await?;
+        return Err(anyhow!("Initiate failed: {status} - {body}",));
+    }
+    let init_body = init_response.text().await?;
+
+    // REVIEW Parse UploadId from XML
+    let upload_id = init_body
+        .split("<UploadId>")
+        .nth(1)
+        .and_then(|s| s.split("</UploadId>").next())
+        .ok_or_else(|| anyhow!("Failed to parse UploadId"))?
+        .to_string();
+
+    // REVIEW Upload parts
+    let mut file = File::open(file_path).context("Failed to open file at {file_path}")?;
+    let mut buffer = vec![0u8; PART_SIZE as usize];
+    let mut parts = Vec::new();
+    let mut offset = 0;
+    let mut part_number = 1;
+
+    while offset < file_size {
+        let bytes_to_read = std::cmp::min(PART_SIZE, file_size - offset) as usize;
+        let bytes_read = file.read(&mut buffer[..bytes_to_read])?;
+        if bytes_read == 0 {
+            break;
+        }
+        let part_data = &buffer[..bytes_read];
+        let digest = md5::compute(part_data);
+        let content_md5 = general_purpose::STANDARD.encode(digest.as_ref());
+
+        let part_url = format!(
+            "http://{bucket_name}.obs.{region}.myhuaweicloud.com/{object_name}?partNumber={part_number}&uploadId={upload_id}",
+        );
+        let canonical_resource =
+            format!("/{bucket_name}/{object_name}?partNumber={part_number}&uploadId={upload_id}",);
+
+        let part_request = ObsRequest {
+            method: Method::PUT,
+            url: &part_url,
+            credentials,
+            body: Body::Binary(part_data.to_vec()),
+            content_type: Some(ContentType::ApplicationOctetStream),
+            content_md5: &content_md5,
+            canonical_resource: &canonical_resource,
+        };
+
+        let part_response = generate_request(client, part_request).await?;
+        if !part_response.status().is_success() {
+            let status = part_response.status();
+            let body = part_response.text().await?;
+            return Err(anyhow!(
+                "Part {part_number} upload failed: {status} - {body}",
+            ));
+        }
+        let etag = part_response
+            .headers()
+            .get("Etag")
+            .ok_or_else(|| anyhow!("Missing ETag for part {}", part_number))?
+            .to_str()?;
+
+        parts.push(Part {
+            part_number,
+            etag: etag.to_string(),
+        });
+
+        offset += bytes_read as u64;
+
+        part_number += 1;
+        if part_number > MAX_PARTS {
+            return Err(anyhow!("Too many parts, exceeded {}", MAX_PARTS));
+        }
+    }
+
+    // Complete multipart upload
+    let complete_body = CompleteMultipartUpload { parts };
+    let complete_xml = to_string(&complete_body)?;
+    let complete_url = format!(
+        "http://{bucket_name}.obs.{region}.myhuaweicloud.com/{object_name}?uploadId={upload_id}",
+    );
+    let canonical_resource = format!("/{bucket_name}/{object_name}?uploadId={upload_id}");
+    let complete_request = ObsRequest {
+        method: Method::POST,
+        url: &complete_url,
+        credentials,
+        body: Body::Binary(complete_xml.into_bytes()),
+        content_type: Some(ContentType::ApplicationXml),
+        content_md5: "",
+        canonical_resource: &canonical_resource,
+    };
+
+    let complete_response = generate_request(client, complete_request).await?;
+    let status = complete_response.status();
+    let body = complete_response.text().await?;
+
+    if !status.is_success() {
+        return Err(anyhow!("Complete failed: {} - {}", status, body));
+    }
+
+    log_api_response(status, None::<Vec<String>>, &body).await?;
+    Ok(())
+}
+
+/// Upload an object to a bucket
+pub async fn upload_object_bak(
     client: &Client,
     bucket_name: &str,
     region: String,

@@ -1,4 +1,6 @@
-// REVIEW failed calls spit different xml structures
+// FIXME failed calls spit different xml structures
+
+use serde::Serialize;
 
 // Creates a struct with the repeated fields in the XML response
 macro_rules! xml_table {
@@ -66,4 +68,22 @@ xml_table! {
         // REVIEW Owner tag contains a nested id
         "Storage Class" => storage_class: String,
     }
+}
+
+// Multipart uploading
+
+// The entire multipart upload is composed of parts
+#[derive(Serialize)]
+pub struct CompleteMultipartUpload {
+    #[serde(rename = "Part")]
+    pub parts: Vec<Part>,
+}
+
+// Part of the whole upload
+#[derive(Serialize)]
+pub struct Part {
+    #[serde(rename = "PartNumber")]
+    pub part_number: u32,
+    #[serde(rename = "ETag")]
+    pub etag: String,
 }
