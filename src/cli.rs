@@ -40,7 +40,7 @@ pub struct CliArgs {
     pub sk: Option<String>,
 }
 
-// TODO list regions, just a big print, but useful
+// TODO setup, for ak/sk
 
 #[derive(Subcommand)]
 pub enum Commands {
@@ -81,6 +81,10 @@ pub enum Commands {
     /// (experimental) Upload multiple objects to a bucket
     #[command(visible_alias = "puts")]
     UploadObjects(UploadObjectsArgs),
+
+    /// List Huawei Cloud regions
+    #[command(visible_alias = "regions")]
+    ListRegions,
 }
 
 // Arguments for commands

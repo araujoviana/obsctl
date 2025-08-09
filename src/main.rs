@@ -25,6 +25,7 @@ use crate::obs::{
     download_object,
     list_buckets,
     list_objects,
+    list_regions,
     upload_multiple_objects,
     upload_object,
 };
@@ -49,28 +50,16 @@ const HUAWEI_CLOUD_REGIONS: &[(&str, &str)] = &[
     ("istanbul", "tr-west-1"),
 ];
 
-// Reduces boilerplate on command calls (a little bit)
-macro_rules! exec_cmd {
-    ($cmd_name:literal, $func:ident $(, $args:expr)*) => {{
-        debug!("Executing '{}' command", $cmd_name);
-        $func($($args),*).await
-    }};
-}
-
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Initialize colog for logging without envvar setup
     colog::init();
     debug!("Starting execution");
 
-    // Parse CLI arguments
     let args = CliArgs::parse();
     debug!("CLI parsed successfully");
 
-    // Region is obligatory despite not being needed for some calls
     let project_name = fuzzy_match_region(&args.region.to_lowercase());
 
-    // Load AK/SK keys
     let credentials = match get_credentials(args.ak, args.sk) {
         Ok(creds) => creds,
         Err(e) => {
@@ -79,93 +68,89 @@ async fn main() -> Result<()> {
         }
     };
 
-    // Create a single, shared HTTP client
     let client = Client::new();
 
-    // Execute command based on parsed subcommand.
     let command_result = match args.command {
-        Commands::Create(sub_args) => exec_cmd!(
-            "create",
-            create_bucket,
-            &client,
-            &sub_args.bucket,
-            project_name,
-            &credentials
-        ),
-        Commands::ListBuckets => exec_cmd!(
-            "list-buckets",
-            list_buckets,
-            &client,
-            project_name,
-            &credentials
-        ),
-        Commands::ListObjects(sub_args) => exec_cmd!(
-            "list-objects",
-            list_objects,
-            &client,
-            &sub_args.bucket,
-            &sub_args.prefix,
-            &sub_args.marker,
-            project_name,
-            &credentials
-        ),
-        Commands::DeleteBucket(sub_args) => exec_cmd!(
-            "delete-bucket",
-            delete_bucket,
-            &client,
-            &sub_args.bucket,
-            project_name,
-            &credentials
-        ),
-        Commands::DeleteBuckets(sub_args) => exec_cmd!(
-            "delete-buckets",
-            delete_multiple_buckets,
-            &client,
-            sub_args.buckets,
-            project_name,
-            &credentials
-        ),
-        Commands::UploadObject(sub_args) => exec_cmd!(
-            "upload-object",
-            upload_object,
-            &client,
-            &sub_args.bucket,
-            project_name,
-            &sub_args.file_path,
-            &sub_args.object_path,
-            &credentials
-        ),
-        Commands::UploadObjects(sub_args) => exec_cmd!(
-            "upload-objects",
-            upload_multiple_objects,
-            &client,
-            &sub_args.bucket,
-            project_name,
-            sub_args.files,
-            &credentials
-        ),
-        Commands::DownloadObject(sub_args) => exec_cmd!(
-            "download-object",
-            download_object,
-            &client,
-            &sub_args.bucket,
-            project_name,
-            &sub_args.object_path,
-            &sub_args.output_dir,
-            &credentials
-        ),
-        Commands::DeleteObject(sub_args) => exec_cmd!(
-            "delete-object",
-            delete_object,
-            &client,
-            &sub_args.bucket,
-            project_name,
-            &sub_args.object_path,
-            &credentials
-        ),
+        Commands::Create(sub_args) => {
+            debug!("Executing 'create' command");
+            create_bucket(&client, &sub_args.bucket, project_name, &credentials).await
+        }
+        Commands::ListBuckets => {
+            debug!("Executing 'list-buckets' command");
+            list_buckets(&client, project_name, &credentials).await
+        }
+        Commands::ListObjects(sub_args) => {
+            debug!("Executing 'list-objects' command");
+            list_objects(
+                &client,
+                &sub_args.bucket,
+                &sub_args.prefix,
+                &sub_args.marker,
+                project_name,
+                &credentials,
+            )
+            .await
+        }
+        Commands::DeleteBucket(sub_args) => {
+            debug!("Executing 'delete-bucket' command");
+            delete_bucket(&client, &sub_args.bucket, project_name, &credentials).await
+        }
+        Commands::DeleteBuckets(sub_args) => {
+            debug!("Executing 'delete-buckets' command");
+            delete_multiple_buckets(&client, sub_args.buckets, project_name, &credentials).await
+        }
+        Commands::UploadObject(sub_args) => {
+            debug!("Executing 'upload-object' command");
+            upload_object(
+                &client,
+                &sub_args.bucket,
+                project_name,
+                &sub_args.file_path,
+                &sub_args.object_path,
+                &credentials,
+            )
+            .await
+        }
+        Commands::UploadObjects(sub_args) => {
+            debug!("Executing 'upload-objects' command");
+            upload_multiple_objects(
+                &client,
+                &sub_args.bucket,
+                project_name,
+                sub_args.files,
+                &credentials,
+            )
+            .await
+        }
+        Commands::DownloadObject(sub_args) => {
+            debug!("Executing 'download-object' command");
+            download_object(
+                &client,
+                &sub_args.bucket,
+                project_name,
+                &sub_args.object_path,
+                &sub_args.output_dir,
+                &credentials,
+            )
+            .await
+        }
+        Commands::DeleteObject(sub_args) => {
+            debug!("Executing 'delete-object' command");
+            delete_object(
+                &client,
+                &sub_args.bucket,
+                project_name,
+                &sub_args.object_path,
+                &credentials,
+            )
+            .await
+        }
+        Commands::ListRegions => {
+            debug!("Executing 'list-regions' command");
+            list_regions(HUAWEI_CLOUD_REGIONS).await
+        }
     };
 
-    // Logs bubbled up error context
     if let Err(e) = command_result {
         log_error_chain(e);
         exit(1);

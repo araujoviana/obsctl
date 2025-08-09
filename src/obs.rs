@@ -1,4 +1,5 @@
 use crate::error::log_api_response;
+use crate::info;
 use crate::xml::BucketList;
 use crate::xml::CompleteMultipartUpload;
 use crate::xml::ObjectList;
@@ -24,6 +25,8 @@ use std::io::Seek;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
+use tabled::settings::Panel;
+use tabled::{Table, settings::style::Style};
 use tokio::sync::Semaphore;
 
 // TODO IMPORTANT! UNIFY PLURAL COMMANDS WITH SINGULAR COMMANDS!!
@@ -155,6 +158,17 @@ pub async fn list_buckets(
     );
 
     log_api_response(status, Some(parsed), &raw_xml).await
+}
+
+// TODO fix headers to show something useful
+pub async fn list_regions(region_list: &[(&str, &str)]) -> Result<()> {
+    let mut region_table = Table::new(region_list);
+
+    info!(
+        "Available regions:\n{}",
+        region_table.with(Style::rounded())
+    );
+    Ok(())
 }
 
 // TODO add object filtering
