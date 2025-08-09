@@ -15,6 +15,7 @@ use hmac::{Hmac, Mac};
 use indicatif::{ProgressBar, ProgressStyle};
 use log::debug;
 use log::error;
+
 use quick_xml::se::to_string;
 use reqwest::header::{HeaderMap, HeaderValue};
 use reqwest::{Client, Method, Response};
@@ -24,12 +25,10 @@ use std::io::Read;
 use std::io::Seek;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::Duration;
-use tabled::settings::Panel;
+
 use tabled::{Table, settings::style::Style};
 use tokio::sync::Semaphore;
 
-// TODO IMPORTANT! UNIFY PLURAL COMMANDS WITH SINGULAR COMMANDS!!
 // REVIEW replace reqwest with ureq, the asynchronous functions can be deal with differently
 
 // HMAC-SHA1 type alias for OBS signing, not ideal 🤷
@@ -342,7 +341,17 @@ pub async fn upload_object(
         .ok_or_else(|| anyhow!("Failed to parse UploadId"))?
         .to_string();
 
+    info!("Starting upload");
+
     let semaphore = Arc::new(Semaphore::new(SEMAPHORE_SIZE));
+    let bar = Arc::new(ProgressBar::new(file_size));
+    bar.set_style(
+        ProgressStyle::default_bar()
+            .template("[{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta})")
+            .expect("Failed to create progress bar template")
+            .progress_chars("##-"),
+    );
+
     let mut part_futures = FuturesUnordered::new();
 
     let mut offsets = vec![];
@@ -414,17 +423,18 @@ pub async fn upload_object(
                 .to_str()?
                 .to_string();
 
-            Ok::<_, anyhow::Error>(Part {
+            Ok((Part {
                 part_number,
                 etag,
-            })
+            }, size as u64))
         }));
     }
 
     let mut parts = Vec::new();
     while let Some(res) = part_futures.next().await {
-        let part = res??;
+        let (part, size) = res??;
         parts.push(part);
+        bar.inc(size as u64);
     }
 
     parts.sort_by_key(|p| p.part_number);
@@ -454,6 +464,7 @@ pub async fn upload_object(
     }
 
     log_api_response(status, None::<Vec<String>>, &body).await?;
+    bar.finish_with_message("Done");
     Ok(())
 }
 
@@ -487,7 +498,7 @@ pub async fn download_object(
         canonical_resource: &canonical_resource,
     };
 
-    let response = generate_request(client, request).await?;
+    let mut response = generate_request(client, request).await?;
 
     if !response.status().is_success() {
         let status = response.status();
@@ -499,11 +510,21 @@ pub async fn download_object(
         ));
     }
 
+    let total_size = response
+        .content_length()
+        .ok_or_else(|| anyhow!("Could not get content length"))?;
+    let bar = ProgressBar::new(total_size);
+    bar.set_style(ProgressStyle::default_bar()
+        .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta})")
+        .expect("Failed to create progress bar template")
+        .progress_chars("##-"));
+
     // Read entire response body into a buffer
-    let content = response
-        .bytes()
-        .await
-        .context("Failed to read response body bytes")?;
+    let mut content = Vec::with_capacity(total_size as usize);
+    while let Some(chunk) = response.chunk().await? {
+        content.extend_from_slice(&chunk);
+        bar.inc(chunk.len() as u64);
+    }
 
     // Extracts object file name
     let filename = Path::new(object_path).file_name().ok_or_else(|| {
@@ -624,24 +645,6 @@ fn generate_signature(credentials: &Credentials, canonical_string: &str) -> Resu
 
 /// Constructs and sends a signed HTTP request to OBS.
 async fn generate_request(client: &Client, req: ObsRequest<'_>) -> Result<Response> {
-    // Cool spinner
-    let spinner = ProgressBar::new_spinner();
-    spinner.enable_steady_tick(Duration::from_millis(120));
-    spinner.set_style(
-        ProgressStyle::with_template("{spinner:.red} {msg}")
-            .unwrap()
-            .tick_strings(&[
-                "▹▹▹▹▹",
-                "▸▹▹▹▹",
-                "▹▸▹▹▹",
-                "▹▹▸▹▹",
-                "▹▹▹▸▹",
-                "▹▹▹▹▸",
-                "▪▪▪▪▪",
-            ]),
-    );
-    spinner.set_message("Building canonical string...");
-
     // Required date format for OBS
     let date_str = Utc::now().format("%a, %d %b %Y %H:%M:%S GMT").to_string();
     let content_type_canonical = req.content_type.as_ref().map_or("", |ct| ct.as_str());
@@ -658,13 +661,9 @@ async fn generate_request(client: &Client, req: ObsRequest<'_>) -> Result<Respon
 
     debug!("Canonical String for signing:\n{canonical_string}");
 
-    spinner.set_message("Generating signature...");
-
     // Generate HMAC-SHA1 signature using the canonical string
     let signature = generate_signature(req.credentials, &canonical_string)
         .context("Failed to generate request signature")?;
-
-    spinner.set_message("Building headers...");
 
     // Build OBS-compatible headers
     let mut headers = HeaderMap::new();
@@ -686,8 +685,6 @@ async fn generate_request(client: &Client, req: ObsRequest<'_>) -> Result<Respon
         HeaderValue::from_str(&format!("OBS {}:{}", req.credentials.ak, signature))?,
     );
 
-    spinner.set_message("Calling OBS API...");
-
     // Build request with body
     let mut req_builder = client.request(req.method.clone(), req.url).headers(headers);
     req_builder = match &req.body {
@@ -700,8 +697,6 @@ async fn generate_request(client: &Client, req: ObsRequest<'_>) -> Result<Respon
         .send()
         .await
         .context("Failed to send request to OBS endpoint")?;
-
-    spinner.finish_with_message("Done");
 
     Ok(res)
 }

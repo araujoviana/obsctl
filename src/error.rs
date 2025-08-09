@@ -2,7 +2,7 @@ use anyhow::Result;
 use colored::*;
 use log::{error, info, warn};
 use reqwest::StatusCode;
-use tabled::{settings::style::Style, Table, Tabled};
+use tabled::{Table, Tabled, settings::style::Style};
 
 /// Logs an `anyhow::Error` and its causal chain.
 pub fn log_error_chain(err: anyhow::Error) {
