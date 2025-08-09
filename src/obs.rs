@@ -468,6 +468,7 @@ pub async fn upload_object(
     Ok(())
 }
 
+// TODO verify if multithreaded downloads aren't possible
 /// Download an object from a bucket
 pub async fn download_object(
     client: &Client,
@@ -514,10 +515,12 @@ pub async fn download_object(
         .content_length()
         .ok_or_else(|| anyhow!("Could not get content length"))?;
     let bar = ProgressBar::new(total_size);
-    bar.set_style(ProgressStyle::default_bar()
-        .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta})")
-        .expect("Failed to create progress bar template")
-        .progress_chars("##-"));
+    bar.set_style(
+        ProgressStyle::default_bar()
+            .template("[{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta})")
+            .expect("Failed to create progress bar template")
+            .progress_chars("##-"),
+    );
 
     // Read entire response body into a buffer
     let mut content = Vec::with_capacity(total_size as usize);
