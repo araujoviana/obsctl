@@ -1,5 +1,6 @@
 mod auth; // Manages credential loading and validation.
 mod cli; // Defines the command-line interface structure.
+mod config; // Configurations for the CLI
 mod error; // Provides error handling and logging utilities.
 mod obs; // Contains OBS API interaction logic.
 mod xml; // Macros for XML-based structs and parsing
@@ -9,6 +10,7 @@ use std::process::exit;
 use anyhow::Result;
 use clap::Parser;
 use colored::Colorize;
+use config::set_basic_configs;
 use log::{debug, info, warn};
 use reqwest::Client;
 use strsim::levenshtein;
@@ -58,96 +60,123 @@ async fn main() -> Result<()> {
     let args = CliArgs::parse();
     debug!("CLI parsed successfully");
 
-    let project_name = fuzzy_match_region(&args.region.to_lowercase());
-
-    let credentials = match get_credentials(args.ak, args.sk) {
-        Ok(creds) => creds,
-        Err(e) => {
-            log_error_chain(e);
-            exit(1);
-        }
-    };
-
-    let client = Client::new();
-
     let command_result = match args.command {
-        Commands::Create(sub_args) => {
-            debug!("Executing 'create' command");
-            create_bucket(&client, &sub_args.bucket, project_name, &credentials).await
+        Commands::Setup => {
+            debug!("Executing 'setup' command");
+            set_basic_configs()?;
+            Ok(())
         }
-        Commands::ListBuckets => {
-            debug!("Executing 'list-buckets' command");
-            list_buckets(&client, project_name, &credentials).await
-        }
-        Commands::ListObjects(sub_args) => {
-            debug!("Executing 'list-objects' command");
-            list_objects(
-                &client,
-                &sub_args.bucket,
-                &sub_args.prefix,
-                &sub_args.marker,
-                project_name,
-                &credentials,
-            )
-            .await
-        }
-        Commands::DeleteBucket(sub_args) => {
-            debug!("Executing 'delete-bucket' command");
-            delete_bucket(&client, &sub_args.bucket, project_name, &credentials).await
-        }
-        Commands::DeleteBuckets(sub_args) => {
-            debug!("Executing 'delete-buckets' command");
-            delete_multiple_buckets(&client, sub_args.buckets, project_name, &credentials).await
-        }
-        Commands::UploadObject(sub_args) => {
-            debug!("Executing 'upload-object' command");
-            upload_object(
-                &client,
-                &sub_args.bucket,
-                project_name,
-                &sub_args.file_path,
-                &sub_args.object_path,
-                &credentials,
-            )
-            .await
-        }
-        Commands::UploadObjects(sub_args) => {
-            debug!("Executing 'upload-objects' command");
-            upload_multiple_objects(
-                &client,
-                &sub_args.bucket,
-                project_name,
-                sub_args.files,
-                &credentials,
-            )
-            .await
-        }
-        Commands::DownloadObject(sub_args) => {
-            debug!("Executing 'download-object' command");
-            download_object(
-                &client,
-                &sub_args.bucket,
-                project_name,
-                &sub_args.object_path,
-                &sub_args.output_dir,
-                &credentials,
-            )
-            .await
-        }
-        Commands::DeleteObject(sub_args) => {
-            debug!("Executing 'delete-object' command");
-            delete_object(
-                &client,
-                &sub_args.bucket,
-                project_name,
-                &sub_args.object_path,
-                &credentials,
-            )
-            .await
-        }
-        Commands::ListRegions => {
-            debug!("Executing 'list-regions' command");
-            list_regions(HUAWEI_CLOUD_REGIONS).await
+        _ => {
+            let project_name = match args.region {
+                Some(r) => fuzzy_match_region(&r.to_lowercase()),
+                None => {
+                    match std::env::var("HUAWEICLOUD_SDK_REGION") {
+                        Ok(r) => {
+                            info!("Using region from environment variable: {}", r.cyan());
+                            fuzzy_match_region(&r.to_lowercase())
+                        },
+                        Err(_) => {
+                            let err = anyhow::anyhow!(
+                                "No region provided. Please provide a region using --region or set the HUAWEICLOUD_SDK_REGION environment variable. Run 'obsctl setup' to configure default credentials and region."
+                            );
+                            log_error_chain(err);
+                            exit(1);
+                        }
+                    }
+                }
+            };
+
+            let credentials = match get_credentials(args.ak, args.sk) {
+                Ok(creds) => creds,
+                Err(e) => {
+                    log_error_chain(e);
+                    exit(1);
+                }
+            };
+
+            let client = Client::new();
+
+            match args.command {
+                Commands::Create(sub_args) => {
+                    debug!("Executing 'create' command");
+                    create_bucket(&client, &sub_args.bucket, project_name, &credentials).await
+                }
+                Commands::ListBuckets => {
+                    debug!("Executing 'list-buckets' command");
+                    list_buckets(&client, project_name, &credentials).await
+                }
+                Commands::ListObjects(sub_args) => {
+                    debug!("Executing 'list-objects' command");
+                    list_objects(
+                        &client,
+                        &sub_args.bucket,
+                        &sub_args.prefix,
+                        &sub_args.marker,
+                        project_name,
+                        &credentials,
+                    )
+                    .await
+                }
+                Commands::DeleteBucket(sub_args) => {
+                    debug!("Executing 'delete-bucket' command");
+                    delete_bucket(&client, &sub_args.bucket, project_name, &credentials).await
+                }
+                Commands::DeleteBuckets(sub_args) => {
+                    debug!("Executing 'delete-buckets' command");
+                    delete_multiple_buckets(&client, sub_args.buckets, project_name, &credentials).await
+                }
+                Commands::UploadObject(sub_args) => {
+                    debug!("Executing 'upload-object' command");
+                    upload_object(
+                        &client,
+                        &sub_args.bucket,
+                        project_name,
+                        &sub_args.file_path,
+                        &sub_args.object_path,
+                        &credentials,
+                    )
+                    .await
+                }
+                Commands::UploadObjects(sub_args) => {
+                    debug!("Executing 'upload-objects' command");
+                    upload_multiple_objects(
+                        &client,
+                        &sub_args.bucket,
+                        project_name,
+                        sub_args.files,
+                        &credentials,
+                    )
+                    .await
+                }
+                Commands::DownloadObject(sub_args) => {
+                    debug!("Executing 'download-object' command");
+                    download_object(
+                        &client,
+                        &sub_args.bucket,
+                        project_name,
+                        &sub_args.object_path,
+                        &sub_args.output_dir,
+                        &credentials,
+                    )
+                    .await
+                }
+                Commands::DeleteObject(sub_args) => {
+                    debug!("Executing 'delete-object' command");
+                    delete_object(
+                        &client,
+                        &sub_args.bucket,
+                        project_name,
+                        &sub_args.object_path,
+                        &credentials,
+                    )
+                    .await
+                }
+                Commands::ListRegions => {
+                    debug!("Executing 'list-regions' command");
+                    list_regions(HUAWEI_CLOUD_REGIONS).await
+                }
+                _ => unreachable!(), // Should not happen as all commands are handled
+            }
         }
     };
 
@@ -160,7 +189,7 @@ async fn main() -> Result<()> {
 }
 
 /// Returns the Huawei Cloud project name matching input exactly or approximately.
-fn fuzzy_match_region(input_region: &str) -> String {
+pub fn fuzzy_match_region(input_region: &str) -> String {
     debug!("Pattern matching region");
 
     // Try to find an exact match of the project names

@@ -29,7 +29,7 @@ pub struct CliArgs {
 
     /// OBS region (e.g., la-south-2 or santiago). Required for all operations, even region-independent ones.
     #[arg(short, long)]
-    pub region: String,
+    pub region: Option<String>,
 
     /// Optional access key override. Use only if env var and credentials CSV are unavailable.
     #[arg(short, long, global = true)]
@@ -85,6 +85,10 @@ pub enum Commands {
     /// List Huawei Cloud regions
     #[command(visible_alias = "regions")]
     ListRegions,
+
+    /// Start here: configure your credentials and settings.
+    #[command()]
+    Setup,
 }
 
 // Arguments for commands
