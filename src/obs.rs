@@ -89,6 +89,20 @@ macro_rules! query_params {
     }};
 }
 
+// Shortcut for starting a generic spinner
+macro_rules! init_spinner {
+    ($message:expr) => {{
+        let spinner = ProgressBar::new_spinner();
+        spinner.set_style(
+            ProgressStyle::default_spinner()
+                .template(&format!("{{spinner:.red}} {}", $message))
+                .unwrap(),
+        );
+        spinner.enable_steady_tick(std::time::Duration::from_millis(80));
+        spinner
+    }};
+}
+
 /// Sends a request to create an OBS bucket.
 pub async fn create_bucket(
     client: &Client,
@@ -125,6 +139,8 @@ pub async fn list_buckets(
     region: String,
     credentials: &Credentials,
 ) -> Result<()> {
+    let spinner = init_spinner!("Listing all buckets");
+
     let url = format!("http://obs.{region}.myhuaweicloud.com");
     let body = Body::Text("".to_string());
     let canonical_resource = "/";
@@ -156,6 +172,7 @@ pub async fn list_buckets(
         }
     );
 
+    spinner.finish_with_message("Done");
     log_api_response(status, Some(parsed), &raw_xml).await
 }
 
@@ -180,6 +197,8 @@ pub async fn list_objects(
     region: String,
     credentials: &Credentials,
 ) -> Result<()> {
+    let spinner = init_spinner!(format!("Listing objects in {bucket_name}"));
+
     let url = format!(
         "http://{bucket_name}.obs.{region}.myhuaweicloud.com/{}",
         query_params!(
@@ -217,6 +236,7 @@ pub async fn list_objects(
         }
     );
 
+    spinner.finish_with_message("Done");
     log_api_response(status, Some(parsed), &raw_xml).await
 }
 
@@ -228,6 +248,7 @@ pub async fn delete_bucket(
     region: String,
     credentials: &Credentials,
 ) -> Result<()> {
+    let spinner = init_spinner!(format!("Deleting {bucket_name}"));
     let url = format!("http://{bucket_name}.obs.{region}.myhuaweicloud.com/");
 
     let body = Body::Text("".to_string());
@@ -247,6 +268,7 @@ pub async fn delete_bucket(
     let status = response.status();
     let body = response.text().await?;
 
+    spinner.finish_with_message("Done");
     log_api_response(status, None::<Vec<String>>, &body).await
 }
 
@@ -612,6 +634,8 @@ pub async fn delete_object(
     object_path: &str,
     credentials: &Credentials,
 ) -> Result<()> {
+    let spinner = init_spinner!(format!("Deleting object {object_path}"));
+
     let url = format!("http://{bucket_name}.obs.{region}.myhuaweicloud.com/{object_path}");
     let body = Body::Text("".to_string());
     let canonical_resource = format!("/{bucket_name}/{object_path}");
@@ -629,6 +653,8 @@ pub async fn delete_object(
     let response = generate_request(client, request).await?;
     let status = response.status();
     let body = response.text().await?;
+
+    spinner.finish_with_message("Done");
 
     log_api_response(status, None::<Vec<String>>, &body).await
 }
