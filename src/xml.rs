@@ -52,9 +52,9 @@ macro_rules! xml_to_struct_vec {
 
 xml_table! {
     BucketList {
-        "Name" => name: String,
+        "Bucket Name" => name: String,
         "Created At" => creation_date: String,
-        "Location" => location: String,
+        "Region" => location: String,
         "Type" => bucket_type: String,
     }
 }

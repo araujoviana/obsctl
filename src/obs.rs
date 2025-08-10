@@ -1,3 +1,4 @@
+use crate::HUAWEI_CLOUD_REGIONS;
 use crate::error::log_api_response;
 use crate::info;
 use crate::xml::BucketList;
@@ -7,6 +8,7 @@ use crate::xml::Part;
 use crate::xml_to_struct_vec;
 use anyhow::{Context, Result, anyhow};
 use base64::{Engine as _, engine::general_purpose};
+use bytesize::ByteSize;
 use chrono::Utc;
 use colored::Colorize;
 use futures::future::join_all;
@@ -44,7 +46,7 @@ pub struct Credentials {
 struct ObsRequest<'a> {
     method: Method,
     url: &'a str,
-    credentials: &'a Credentials,
+    credentials: &'a Credentials, // AK/SK
     body: Body,
     content_type: Option<ContentType>,
     content_md5: &'a str,
@@ -170,7 +172,19 @@ pub async fn list_buckets(
             Location => location,
             BucketType => bucket_type
         }
-    );
+    )
+    // Formatting table output
+    .into_iter()
+    .map(|mut bucket| {
+        bucket.creation_date = make_readable_timestamp(&bucket.creation_date);
+        bucket.location = HUAWEI_CLOUD_REGIONS
+            .iter()
+            .find(|(_, code)| code == &bucket.location)
+            .map(|(name, _)| format!("{} - {}", name, bucket.location))
+            .unwrap_or_else(|| bucket.location.clone());
+        bucket
+    })
+    .collect::<Vec<_>>();
 
     spinner.finish_with_message("Done");
     log_api_response(status, Some(parsed), &raw_xml).await
@@ -234,10 +248,30 @@ pub async fn list_objects(
             Size => size,
             StorageClass => storage_class,
         }
-    );
+    )
+    // Formatting table output
+    .into_iter()
+    .map(|mut bucket| {
+        bucket.last_modified = make_readable_timestamp(&bucket.last_modified);
+        bucket.size = ByteSize(
+            bucket
+                .size
+                .parse()
+                .expect("Failed to parse file size for {&bucket.key}"),
+        )
+        .to_string();
+        bucket
+    })
+    .collect::<Vec<_>>();
 
     spinner.finish_with_message("Done");
     log_api_response(status, Some(parsed), &raw_xml).await
+}
+
+fn make_readable_timestamp(timestamp: &str) -> String {
+    chrono::DateTime::parse_from_rfc3339(timestamp)
+        .map(|date| date.format("%Y-%m-%d %H:%M:%S").to_string())
+        .unwrap_or_else(|_| timestamp.to_string())
 }
 
 // TODO QOL Run a "list objects" when the deletion fails
