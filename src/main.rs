@@ -11,6 +11,7 @@ use anyhow::Result;
 use clap::Parser;
 use colored::Colorize;
 use config::set_basic_configs;
+use dialoguer::Select;
 use log::{debug, info, warn};
 use reqwest::Client;
 use strsim::levenshtein;
@@ -68,21 +69,39 @@ async fn main() -> Result<()> {
         _ => {
             let project_name = match args.region {
                 Some(r) => fuzzy_match_region(&r.to_lowercase()),
-                None => {
-                    match std::env::var("HUAWEICLOUD_SDK_REGION") {
-                        Ok(r) => {
-                            info!("Using region from environment variable: {}", r.cyan());
-                            fuzzy_match_region(&r.to_lowercase())
-                        },
-                        Err(_) => {
-                            let err = anyhow::anyhow!(
-                                "No region provided. Please provide a region using --region or set the HUAWEICLOUD_SDK_REGION environment variable. Run 'obsctl setup' to configure default credentials and region."
-                            );
-                            log_error_chain(err);
-                            exit(1);
-                        }
+                None => match std::env::var("HUAWEICLOUD_SDK_REGION") {
+                    Ok(r) => {
+                        info!("Using region from environment variable: {}", r.cyan());
+                        fuzzy_match_region(&r.to_lowercase())
                     }
-                }
+                    Err(_) => {
+                        let items: Vec<String> = HUAWEI_CLOUD_REGIONS
+                            .iter()
+                            .map(|(name, code)| format!("{} ({})", name, code))
+                            .collect();
+
+                        let selection = Select::new()
+                            .with_prompt("Select a Huawei Cloud region")
+                            .items(&items)
+                            .default(0)
+                            .interact();
+
+                        let index = match selection {
+                            Ok(i) => i,
+                            Err(e) => {
+                                log_error_chain(e.into());
+                                exit(1);
+                            }
+                        };
+
+                        let chosen = HUAWEI_CLOUD_REGIONS[index].1.to_string();
+                        info!("Using region from menu: {}", chosen.cyan());
+                        unsafe {
+                            std::env::set_var("HUAWEICLOUD_SDK_REGION", &chosen);
+                        }
+                        chosen
+                    }
+                },
             };
 
             let credentials = match get_credentials(args.ak, args.sk) {
