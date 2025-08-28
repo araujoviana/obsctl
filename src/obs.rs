@@ -307,7 +307,7 @@ pub async fn delete_bucket(
 }
 
 /// Deletes multiple buckets asynchronously from OBS
-pub async fn delete_multiple_buckets(
+pub async fn delete_buckets(
     client: &Client,
     buckets: Vec<String>,
     region: String,
@@ -618,8 +618,8 @@ pub async fn download_object(
     Ok(())
 }
 
-/// Upload multiple object to a bucket
-pub async fn upload_multiple_objects(
+/// Upload multiple objects to a bucket
+pub async fn upload_objects(
     client: &Client,
     bucket_name: &str,
     region: String,
