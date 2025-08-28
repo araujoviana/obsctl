@@ -21,15 +21,14 @@ use crate::error::log_error_chain;
 use crate::obs::{
     // OBS operations
     create_bucket,
-    delete_bucket,
-    delete_multiple_buckets,
+    delete_buckets,
     delete_object,
     download_object,
     list_buckets,
     list_objects,
     list_regions,
-    upload_multiple_objects,
     upload_object,
+    upload_objects,
 };
 
 // Maximum allowed edit distance for fuzzy region name matching
@@ -119,34 +118,30 @@ async fn main() -> Result<()> {
                 }
                 Commands::DeleteBucket(sub_args) => {
                     debug!("Executing 'delete-bucket' command");
-                    delete_bucket(&client, &sub_args.bucket, project_name, &credentials).await
-                }
-                Commands::DeleteBuckets(sub_args) => {
-                    debug!("Executing 'delete-buckets' command");
-                    delete_multiple_buckets(&client, sub_args.buckets, project_name, &credentials).await
+                    delete_buckets(&client, sub_args.buckets, project_name, &credentials).await
                 }
                 Commands::UploadObject(sub_args) => {
                     debug!("Executing 'upload-object' command");
-                    upload_object(
-                        &client,
-                        &sub_args.bucket,
-                        project_name,
-                        &sub_args.file_path,
-                        &sub_args.object_path,
-                        &credentials,
-                    )
-                    .await
-                }
-                Commands::UploadObjects(sub_args) => {
-                    debug!("Executing 'upload-objects' command");
-                    upload_multiple_objects(
-                        &client,
-                        &sub_args.bucket,
-                        project_name,
-                        sub_args.files,
-                        &credentials,
-                    )
-                    .await
+                    if sub_args.file_paths.len() == 1 {
+                        upload_object(
+                            &client,
+                            &sub_args.bucket,
+                            project_name,
+                            &sub_args.file_paths[0],
+                            &sub_args.object_path,
+                            &credentials,
+                        )
+                        .await
+                    } else {
+                        upload_objects(
+                            &client,
+                            &sub_args.bucket,
+                            project_name,
+                            sub_args.file_paths,
+                            &credentials,
+                        )
+                        .await
+                    }
                 }
                 Commands::DownloadObject(sub_args) => {
                     debug!("Executing 'download-object' command");

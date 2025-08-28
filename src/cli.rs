@@ -53,7 +53,7 @@ pub enum Commands {
     #[command(visible_alias = "lsb")]
     ListBuckets,
 
-    /// Delete a single bucket
+    /// Delete one or more buckets
     #[command(visible_alias = "rmb")]
     DeleteBucket(DeleteBucketArgs),
 
@@ -61,7 +61,7 @@ pub enum Commands {
     #[command(visible_alias = "ls")]
     ListObjects(ListObjectsArgs),
 
-    /// Upload an object to a bucket
+    /// Upload one or more objects to a bucket
     #[command(visible_alias = "put")]
     UploadObject(UploadObjectArgs),
 
@@ -72,15 +72,6 @@ pub enum Commands {
     /// Delete an object from a bucket
     #[command(visible_alias = "rm")]
     DeleteObject(DeleteObjectArgs),
-
-    // TODO unify plural commands with normal commands
-    /// (experimental) Delete multiple buckets
-    #[command(visible_alias = "rmbs")]
-    DeleteBuckets(DeleteBucketsArgs),
-
-    /// (experimental) Upload multiple objects to a bucket
-    #[command(visible_alias = "puts")]
-    UploadObjects(UploadObjectsArgs),
 
     /// List Huawei Cloud regions
     #[command(visible_alias = "regions")]
@@ -113,14 +104,8 @@ pub struct ListObjectsArgs {
 
 #[derive(Args)]
 pub struct DeleteBucketArgs {
-    /// The bucket to delete
-    pub bucket: String,
-}
-
-#[derive(Args)]
-pub struct DeleteBucketsArgs {
-    /// List of (space separated) bucket names to delete
-    #[arg(short, long, num_args = 1..)]
+    /// One or more bucket names to delete
+    #[arg(num_args(1..))]
     pub buckets: Vec<String>,
 }
 
@@ -128,22 +113,12 @@ pub struct DeleteBucketsArgs {
 pub struct UploadObjectArgs {
     /// The bucket to upload to
     pub bucket: String,
-    /// File path
-    #[arg(short, long)]
-    pub file_path: String,
-    /// Optional object path
+    /// One or more local file paths to upload. The object key will be the filename.
+    #[arg(short = 'f', long = "file-path", num_args(1..))]
+    pub file_paths: Vec<String>,
+    /// Optional object path for single-file uploads
     #[arg(short, long)]
     pub object_path: Option<String>,
-}
-
-#[derive(Args)]
-pub struct UploadObjectsArgs {
-    /// The bucket to upload to
-    #[arg(short, long)]
-    pub bucket: String,
-    /// One or more local file paths to upload. The object key will be the filename.
-    #[arg(short, long, num_args(1..))]
-    pub files: Vec<String>,
 }
 
 #[derive(Args)]
